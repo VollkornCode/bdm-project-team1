@@ -13,7 +13,8 @@ dotenv.load_dotenv(_dotenv_path)
 
 ### MINIO 
 # Connection settings
-MINIO_HOST = "localhost:9000" # Set to either localhost or minio, depending on whether you are running the code locally or in a container.
+MINIO_LOCAL = True
+MINIO_HOST =  "localhost:9000" if MINIO_LOCAL else "minio:9000"
 MINIO_ENDPOINT   = f"http://{MINIO_HOST}"
 MINIO_ACCESS_KEY = os.getenv("MINIO_UNAME")
 MINIO_SECRET_KEY = os.getenv("MINIO_PW")
