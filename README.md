@@ -2,7 +2,6 @@
 
 This repository serves as store for the code infrastrucutre of the BDM Project.
 
-
 ## Setup
 ### Environment Variables
 In the `config` folder, Copy the `.env.template` file and name it to `.env`, then fill in the values. Ask a maintainer of the project to provide you with the values for the secrets.
@@ -17,3 +16,9 @@ To run your python script locally, change the working directory to `src` and run
 ```sh
 $ user@machine bdm-project-team1/src % python main.py
 ```
+
+If you run into trouble when trying to upload to the delta lake, try running
+```sh
+curl -v http://localhost:9000/minio/health/live
+```
+For some reason, it helped in my case.
