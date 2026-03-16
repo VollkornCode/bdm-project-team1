@@ -7,7 +7,7 @@ This repository serves as store for the code infrastrucutre of the BDM Project.
 In the `config` folder, Copy the `.env.template` file and name it to `.env`, then fill in the values. Ask a maintainer of the project to provide you with the values for the secrets.
 
 ### Docker
-Change the working directory to `src/docker` and run `docker compose up --build -d`
+Change the working directory to `docker` and run `docker compose up --build -d`
 
 ### Running locally
 If you are testing your code locally, in `src/config/conf.py` set `MINIO_LOCAL = True` such that you can run the code from your local machine and don't need to run it via docker.
