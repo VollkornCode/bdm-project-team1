@@ -1,4 +1,5 @@
 ''' Provides cleaning utilities for the project. Contains functions for data cleaning, transformation, and preprocessing.'''
+import os
 
 import polars as pl
 from pyarrow import parquet
@@ -13,6 +14,19 @@ def clean_food_cpi_data(s3_file_path: str) -> pl.DataFrame:
     df = df.drop("Domain Code", "Area Code", "Year Code", "Item Code", "Months Code", "Element Code", "Element", "Unit", "Flag", "Flag Description", "Note")
     df = df.rename({"Area": "Country"})
     return df
+
+def rmdir_recursively(path: str):
+    ''' Recursively removes a directory and all its contents. '''
+    if os.path.isdir(path):
+        for entry in os.listdir(path):
+            entry_path = os.path.join(path, entry)
+            if os.path.isdir(entry_path):
+                rmdir_recursively(entry_path)
+            else:
+                os.remove(entry_path)
+        os.rmdir(path)
+    else:
+        raise ValueError(f"The provided path '{path}' is not a directory.")
 
 def df_to_parquet(df: pl.DataFrame, file_path: str) -> str:
     ''' Writes a Polars DataFrame to a Parquet file at the specified file path. '''
