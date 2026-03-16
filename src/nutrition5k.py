@@ -45,7 +45,7 @@ def ingest_kaggle_to_minio():
         os.makedirs(download_path)
 
     # Solo los CSVs que nos interesan
-    files_to_ingest = ["RAW_interactions.csv", "RAW_recipes.csv", "ingr_map.pkl"]
+    files_to_ingest = ["dish_ingredients.csv", "dish_nutrition_values.csv", "ingredients_metadata.csv"]
     
     print(f"--- Iniciando proceso de ingesta selectiva ---")
 

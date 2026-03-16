@@ -17,14 +17,14 @@ def ingest_spoonacular_to_minio():
                       aws_access_key_id=os.getenv("MINIO_ACCESS_KEY"),
                       aws_secret_access_key=os.getenv("MINIO_SECRET_KEY"))
     
-    bucket_name = "landing-zone/spoon/"
+    bucket_name = "landing-zone"
     # Carpeta organizada por fuente y fecha
-    target_folder = "temporal_landing"
+    target_folder = "temporal_landing/spoon/"
     
     # 2. Parámetros de la petición
     params = {
         "apiKey": api_key,
-        "number": 10,
+        "number": 5,
         "includeNutrition": "true"
     }
 

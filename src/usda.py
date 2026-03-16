@@ -9,7 +9,7 @@ load_dotenv()
 
 def ingest_usda_to_minio(query="apple"):
     # 1. Configuración de API y Clientes
-    api_key = os.getenv("USDA_API_KEY")
+    api_key = os.getenv("USDA_KEY")
     # Endpoint de búsqueda
     url = "https://api.nal.usda.gov/fdc/v1/foods/search"
     
@@ -25,16 +25,15 @@ def ingest_usda_to_minio(query="apple"):
     # Usamos POST para poder configurar filtros más complejos fácilmente
     payload = {
         "query": query,
-        "pageSize": 50, # Cantidad de resultados
+        "pageSize": 10, # Cantidad de resultados
         "dataType": ["Foundation", "Survey (FNDDS)"], # Tipos de datos más fiables nutricionalmente
         "api_key": api_key
     }
-
     print(f"Buscando alimentos en USDA para el término: '{query}'...")
 
     try:
         # 3. Petición a USDA
-        response = requests.post(url, json=payload)
+        response = requests.post(url, json=payload, params={"api_key": api_key})
         response.raise_for_status()
         
         data = response.json()
