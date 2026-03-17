@@ -4,11 +4,11 @@ import os
 import dotenv
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-print(f"Project root directory: {PROJECT_ROOT}")
+#print(f"Project root directory: {PROJECT_ROOT}")
 
 #LOAD ENVIRONMENT VARIABLES
 _dotenv_path = os.path.join(PROJECT_ROOT, "config", ".env")
-print(f".env path: {_dotenv_path}")
+#print(f".env path: {_dotenv_path}")
 dotenv.load_dotenv(_dotenv_path)
 
 ### MINIO 
@@ -18,6 +18,31 @@ MINIO_HOST =  "localhost:9000" if MINIO_LOCAL else "minio:9000"
 MINIO_ENDPOINT   = f"http://{MINIO_HOST}"
 MINIO_ACCESS_KEY = os.getenv("MINIO_UNAME")
 MINIO_SECRET_KEY = os.getenv("MINIO_PW")
+
+
+### DELTA LAKE
+DELTALAKE_STORAGE_OPTIONS = {
+    "endpoint_url": MINIO_ENDPOINT,
+    "access_key_id": MINIO_ACCESS_KEY,
+    "secret_access_key": MINIO_SECRET_KEY,
+    "region": "eu-west-1",
+    "allow_http": "true",
+    "AWS_S3_ALLOW_UNSAFE_RENAME": "true",
+    "AWS_S3_ADDRESSING_STYLE": "path",
+    "conditional_put": "etag",
+}
+
+# Optional: separate options for Polars read_csv(..., storage_options=...)
+POLARS_S3_STORAGE_OPTIONS = {
+    "key": MINIO_ACCESS_KEY,
+    "secret": MINIO_SECRET_KEY,
+    "client_kwargs": {"endpoint_url": MINIO_ENDPOINT, "region_name": "eu-west-1"},
+    "use_ssl": False,
+}
+
+DELTALAKE_TABLES = {
+    "FAOSTAT_FOOD_CPI": "s3://deltalake/faostat/food_cpi"
+}
 
 
 ### API RELEVANT ENVIRONMNET VARIABLES AND CONSTANTS
@@ -77,29 +102,4 @@ FAOSTAT_DOMAIN_CODES = {
 }
 FAOSTAT_ITEM_CODES = {
     "FOOD_CPI": "23013",
-}
-
-
-### DELTA LAKE
-DELTALAKE_STORAGE_OPTIONS = {
-    "endpoint_url": MINIO_ENDPOINT,
-    "access_key_id": MINIO_ACCESS_KEY,
-    "secret_access_key": MINIO_SECRET_KEY,
-    "region": "eu-west-1",
-    "allow_http": "true",
-    "AWS_S3_ALLOW_UNSAFE_RENAME": "true",
-    "AWS_S3_ADDRESSING_STYLE": "path",
-    "conditional_put": "etag",
-}
-
-# Optional: separate options for Polars read_csv(..., storage_options=...)
-POLARS_S3_STORAGE_OPTIONS = {
-    "key": MINIO_ACCESS_KEY,
-    "secret": MINIO_SECRET_KEY,
-    "client_kwargs": {"endpoint_url": MINIO_ENDPOINT, "region_name": "eu-west-1"},
-    "use_ssl": False,
-}
-
-DELTALAKE_TABLES = {
-    "FAOSTAT_FOOD_CPI": "s3://deltalake/faostat/food_cpi"
 }
