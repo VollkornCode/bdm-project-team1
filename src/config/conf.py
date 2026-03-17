@@ -21,6 +21,24 @@ MINIO_SECRET_KEY = os.getenv("MINIO_PW")
 
 
 ### API RELEVANT ENVIRONMNET VARIABLES AND CONSTANTS
+## KAGGLE API
+KAGGLE_USERNAME = os.getenv("KAGGLE_USERNAME")
+KAGGLE_KEY = os.getenv("KAGGLE_KEY")
+KAGGLE_5k_DATASET = "gillesokhin/nutrition5k-dataset"
+KAGGLE_FOODCOM_DATASET = "shuyangli94/food-com-recipes-and-user-interactions"
+
+## SPOONOCULAR API
+SPOON_KEY = os.getenv("SPOON_KEY")
+SPOON_BASE_URL = url = "https://api.spoonacular.com/recipes/random"
+
+## USDA API
+USDA_KEY = os.getenv("USDA_KEY")
+USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
+
+## OFF API
+OFF_BASE_URL = "https://world.openfoodfacts.org/api/v2/search"
+OFF_BASE_HEADER = {"User-Agent": "BigDataManagementProjectUniversitatPolitecnicaCatalunya/1.0 (contact: sergi.gonzalez.martos@estudiantat.upc.edu)"}
+
 ## FAOSTAT API
 FAOSTAT_UNAME = os.getenv("FAOSTAT_UNAME")
 FAOSTAT_PWD = os.getenv("FAOSTAT_PWD")
