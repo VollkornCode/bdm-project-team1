@@ -98,8 +98,11 @@ FAOSTAT_EU_COUNTRY_CODES = ','.join([    "11",    # Austria
                                 "210"    # Sweden
 ])
 FAOSTAT_DOMAIN_CODES = {
-    "CONSUMER_PRICES": "CP"
+    "CONSUMER_PRICES": "CP",
+    "PRODUCER_PRICES": "PP"
 }
 FAOSTAT_ITEM_CODES = {
     "FOOD_CPI": "23013",
+    "FOOD_PPI": "5539",     
+    "PP_LCU": "5530",
 }
