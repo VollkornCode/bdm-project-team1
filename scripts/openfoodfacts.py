@@ -6,9 +6,11 @@ import time
 from datetime import datetime
 
 # Import configuration constants from the central config file
-from config.conf import (
+from conf import (
     OFF_BASE_URL,
     OFF_BASE_HEADER,
+    OFF_PAGES,
+    OFF_PAGE_SIZE,
     MINIO_ENDPOINT,
     MINIO_ACCESS_KEY,
     MINIO_SECRET_KEY
@@ -18,7 +20,7 @@ from config.conf import (
 Note: The OpenFoodFacts API has a limit of 10 requests per minute for search queries.
 '''
 # ingests product data from OpenFoodFacts and uploads it to MinIO
-def ingest_off_automatic(pages=3, page_size=20):
+def ingest_off_automatic(pages, page_size):
 
     # MinIO Client configuration using centralized variables.
     s3 = boto3.client("s3", 
@@ -84,4 +86,4 @@ def ingest_off_automatic(pages=3, page_size=20):
 
 if __name__ == "__main__":
     # Download 3 test pages (approx. 60 products with page_size=20)
-    ingest_off_automatic(pages=3, page_size=20)
+    ingest_off_automatic(OFF_PAGES, OFF_PAGE_SIZE)

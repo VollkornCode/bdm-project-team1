@@ -4,7 +4,7 @@ import os
 import polars as pl
 from pyarrow import parquet
 
-from config.conf import DELTALAKE_STORAGE_OPTIONS, POLARS_S3_STORAGE_OPTIONS
+from conf import DELTALAKE_STORAGE_OPTIONS, POLARS_S3_STORAGE_OPTIONS
 
 def rmdir_recursively(path: str):
     ''' Recursively removes a directory and all its contents. '''

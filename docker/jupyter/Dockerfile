@@ -1,4 +1,4 @@
-# Lightweight Python-based Jupyter image (no JVM needed – we use delta-rs)
+# Lightweight Python-based Jupyter image
 FROM quay.io/jupyter/base-notebook:python-3.13
 
 USER root
@@ -14,7 +14,13 @@ USER ${NB_UID}
 # pyarrow    – shared columnar runtime used by both deltalake and polars
 # duckdb     – in-process SQL engine that can query Delta tables directly
 # boto3      – S3 client and filesystem adapter (for MinIO)
-WORKDIR /home/jovyan
-COPY requirements.txt .
-RUN pip install -r requirements.txt --no-cache-dir
+RUN pip install --no-cache-dir \
+        "deltalake" \
+        "polars" \
+        "pyarrow" \
+        "duckdb" \
+        "pandas" \
+        "boto3" \
+        "kafka-python==2.3.0"
 
+WORKDIR /home/jovyan

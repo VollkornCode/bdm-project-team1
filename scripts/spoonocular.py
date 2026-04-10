@@ -5,7 +5,7 @@ import boto3
 from datetime import datetime
 
 # Import configuration constants from the central config file.
-from config.conf import (
+from conf import (
     SPOON_KEY,
     SPOON_BASE_URL,
     MINIO_ENDPOINT,
@@ -33,7 +33,7 @@ def ingest_spoonacular():
     # Request Parameters
     params = {
         "apiKey": SPOON_KEY,
-        "number": 5,
+        "number": 2,
         "includeNutrition": "true"
     }
 

@@ -9,7 +9,7 @@ import requests
 import pandas as pd
 import polars as pl
 
-from config.conf import (PROJECT_ROOT,
+from conf import (PROJECT_ROOT,
                          POLARS_S3_STORAGE_OPTIONS, 
                          DELTALAKE_TABLES,
                          FAOSTAT_BASE_URL,
@@ -20,8 +20,8 @@ from config.conf import (PROJECT_ROOT,
                          FAOSTAT_PWD,
                          FAOSTAT_UNAME)
 
-from ingest import MinioClient, DeltaLakeClient
-from util import util
+from src.ingest import MinioClient, DeltaLakeClient
+from src.util import util
 
 ### FAOSTAT API Wrapper
 # See https://www.fao.org/faostat/en/#developer-portal for more details on the API.
@@ -116,7 +116,6 @@ def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient):
 
     # Remove temporary directory and its contents
     util.rmdir_recursively(tmp_dir)
-
 
 def clean_food_cpi_data(s3_file_path: str) -> pl.DataFrame:
     ''' Cleans the raw food consumer price index (CPI) data from the FAOSTAT API. 

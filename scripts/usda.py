@@ -5,7 +5,7 @@ import boto3
 from datetime import datetime
 
 # Import configuration constants from the central config file
-from config.conf import (
+from conf import (
     USDA_KEY,
     USDA_BASE_URL,
     MINIO_ENDPOINT,

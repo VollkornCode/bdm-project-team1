@@ -8,7 +8,7 @@ import json
 import os
 from botocore.exceptions import ClientError
 
-from config.conf import MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, DELTALAKE_STORAGE_OPTIONS
+from conf import MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, DELTALAKE_STORAGE_OPTIONS
 
 class MinioClient:
     ''' Client for interacting with the MinIO data lake. '''
