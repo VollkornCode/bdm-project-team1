@@ -6,7 +6,7 @@ from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
 from scripts.ingest import MinioClient, DeltaLakeClient
 
-from conf import (
+from scripts.conf import (
     KAFKA_BOOTSTRAP_SERVERS, 
     KAFKA_TOPIC, KAFKA_GROUP, 
     CONSUMER_TIMEOUT_MS, 
@@ -76,7 +76,7 @@ def init_fetch(minio_client: MinioClient):
         file_path = f"kafka_ingestion/{kafka_client.topic}/{timestamp}_batch.json"
         
         # 3. Upload the file to MinIO "raw-data" bucket.
-        minio_client.upload_file(messages, "raw-data", file_path)
+        minio_client.upload_object(messages, "raw-data", file_path)
         print(f"Raw data successfully saved to MinIO: raw-data/{file_path}")
 
     except Exception as e:

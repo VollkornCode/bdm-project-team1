@@ -24,7 +24,8 @@ class OpenFoodFactsClient:
     def __init__(self):
         self.base_url = OFF_BASE_URL
         self.headers = OFF_BASE_HEADER
-        self.state_file = "ingestion_state.json"
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        self.state_file = os.path.join(base_path, "ingestion_state.json")
 
     def _get_last_processed_page(self) -> int:
         ''' Reads the local state file to determine where to resume. '''
@@ -104,17 +105,17 @@ def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient, pages_t
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"off_page_{current_page}_{timestamp}.json"
             object_key = f"openfoodfacts/{filename}"
-            s3_path = f"s3://raw-data/{object_key}"
             
             # 3. Upload the file to MinIO "raw-data" bucket.
-            minio_client.upload_file(data, "raw-data", object_key)
+            minio_client.upload_object(data, "raw-data", object_key)
+            print(f"Success: Raw JSON uploaded to s3://raw-data/{object_key}")
 
             # 4. Upload the file to MinIO "deltalake" bucket.
-            df_full = pl.read_json(s3_path, storage_options=POLARS_S3_STORAGE_OPTIONS)
-            delta_client.write_table(df_full, DELTALAKE_TABLES["OPENFOODFACTS"], partition_by=["brands"])
-            
-            off_client._save_current_page(current_page)
-            print(f"Success: Page {current_page} uploaded to s3://raw-data/{object_key}")
+            products_list = data.get("products", [])
+            if products_list:
+                delta_client.write_table(products_list, DELTALAKE_TABLES["OPENFOODFACTS"], partition_by=["brands"])
+                off_client._save_current_page(current_page)
+                print(f"Success: Page {current_page} uploaded to s3://raw-data/{object_key}")
 
         except Exception as e:
             print(f"Critical error on page {current_page}: {e}")

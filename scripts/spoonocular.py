@@ -47,7 +47,7 @@ class SpoonacularClient:
 
 '''
 Note: Calling this endpoint requires 1 point and 0.01 points per recipe returned and 
-      0.5 points per recipe returned if includeNutrition is set to true. 
+      0.5 points per recipe returned if includeNutrition is set to true. 50 points per day.
 '''
 def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient, recipe_count: int):
     
@@ -78,17 +78,16 @@ def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient, recipe_
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"recipes_{timestamp}.json"
         object_key = f"spoonocular/{filename}"
-        s3_path_raw = f"s3://raw-data/{object_key}"
 
         # 3. Upload the file to MinIO "raw-data" bucket.
-        minio_client.upload_file(data, "raw-data", object_key)
+        minio_client.upload_object(data, "raw-data", object_key)
         print(f"Success: Raw JSON uploaded to s3://raw-data/{object_key}")
 
         # 4. Upload the file to MinIO "deltalake" bucket.
-        df_full = pl.read_json(s3_path_raw, storage_options=POLARS_S3_STORAGE_OPTIONS)
-        delta_client.write_table(df_full, DELTALAKE_TABLES["SPOONOCULAR"], partition_by=["title"])
-
-        print(f"Success: 100% of data registered in Delta Lake at {DELTALAKE_TABLES['SPOONOCULAR']}")
+        recipes_list = data.get("recipes", [])
+        if recipes_list:
+            delta_client.write_table(recipes_list, DELTALAKE_TABLES["SPOONOCULAR"], partition_by=["title"])
+            print(f"Success: 100% of data registered in Delta Lake at {DELTALAKE_TABLES['SPOONOCULAR']}")
 
     except Exception as e:
         print(f"Critical error during Spoonacular ingestion: {e}")

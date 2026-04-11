@@ -79,17 +79,16 @@ def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient, query: 
         clean_query = query.replace(" ", "_").lower()
         filename = f"usda_{clean_query}_{timestamp}.json"
         object_key = f"usda/{filename}"
-        s3_path_raw = f"s3://raw-data/{object_key}"
 
         # 3. Upload the file to MinIO "raw-data" bucket.
-        minio_client.upload_file(data, "raw-data", object_key)
+        minio_client.upload_object(data, "raw-data", object_key)
         print(f"Step 1: Raw JSON uploaded to s3://raw-data/{object_key}")
 
         # 4. Upload the file to MinIO "deltalake" bucket.
-        df_full = pl.read_json(s3_path_raw, storage_options=POLARS_S3_STORAGE_OPTIONS)
-        delta_client.write_table(df_full, DELTALAKE_TABLES["USDA"], partition_by=["foodCategory"])        
-
-        print(f"Step 2: 100% of content registered in Delta Lake at {DELTALAKE_TABLES['USDA']}")
+        foods_list = data.get("foods", [])
+        if foods_list:
+            delta_client.write_table(foods_list, DELTALAKE_TABLES["USDA"], partition_by=["foodCategory"])        
+            print(f"Step 2: 100% of content registered in Delta Lake at {DELTALAKE_TABLES['USDA']}")
 
     except Exception as e:
         print(f"Critical error during USDA ingestion: {e}")

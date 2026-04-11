@@ -23,7 +23,7 @@ from scripts.conf import (
 
 @dag(
     dag_id="ingest_openfoodfacts_api",
-    schedule=timedelta(hours=12),
+    schedule=timedelta(minutes=5),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "food_data", "deltalake", "minio"],
@@ -107,7 +107,7 @@ def faostat_airflow():
 
 @dag(
     dag_id="ingest_kafka",
-    schedule=timedelta(seconds=30),
+    schedule=timedelta(seconds=10),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "food_data", "deltalake", "minio"],
@@ -121,8 +121,7 @@ def kafka_airflow():
     @task()
     def ingest_kafka():
         m_client = MinioClient()
-        # Consumimos del tópico que definiste en tu producer
-        kafka_consumer(m_client)
+        kafka_consumer.init_fetch(m_client)
 
     ingest_kafka()
 
