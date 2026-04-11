@@ -1,14 +1,15 @@
 import json
 import requests
+import os
+import sys
 import polars as pl
 from datetime import datetime
 
-# Import clients and utilities following the project structure
-from src.ingest import MinioClient, DeltaLakeClient
-from src.util import util
+from scripts.ingest import MinioClient, DeltaLakeClient
+from scripts.util import util
 
 # Import configuration constants
-from conf import (
+from scripts.conf import (
     POLARS_S3_STORAGE_OPTIONS, 
     DELTALAKE_TABLES,
     USDA_KEY,

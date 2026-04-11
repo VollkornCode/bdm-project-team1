@@ -13,15 +13,23 @@ dotenv.load_dotenv(_dotenv_path)
 
 ### MINIO 
 # Connection settings
-MINIO_LOCAL = True
-MINIO_HOST =  "localhost:9000" if MINIO_LOCAL else "minio:9000"
-MINIO_ENDPOINT   = f"http://{MINIO_HOST}"
+IN_DOCKER = os.path.exists('/.dockerenv')
+MINIO_HOST = os.getenv("MINIO_HOST", "minio:9000" if IN_DOCKER else "localhost:9000")
+MINIO_ENDPOINT = f"http://{MINIO_HOST}"
 MINIO_ACCESS_KEY = os.getenv("MINIO_UNAME")
 MINIO_SECRET_KEY = os.getenv("MINIO_PW")
 
+### USER KAFKA
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092" if IN_DOCKER else "localhost:9092")
+KAFKA_TOPIC="user-info-raw"
+KAFKA_GROUP ="default-group"
+BATCH_SIZE = 20
+INTERVAL_SECONDS = 5
+CONSUMER_TIMEOUT_MS= 5000
+DELTA_TABLE_PATH = "./data/delta_lake/json_blob_table"
+
 
 ### API RELEVANT ENVIRONMNET VARIABLES AND CONSTANTS
-
 ## OPENFOODFACT API
 OFF_BASE_URL = "https://world.openfoodfacts.org/api/v2/search"
 OFF_BASE_HEADER = {"User-Agent": "BigDataManagementProjectUniversitatPolitecnicaCatalunya/1.0 (contact: sergi.gonzalez.martos@estudiantat.upc.edu)"}
@@ -41,7 +49,7 @@ QUERY = "apple"
 ## FAOSTAT API
 FAOSTAT_UNAME = os.getenv("FAOSTAT_UNAME")
 FAOSTAT_PWD = os.getenv("FAOSTAT_PWD")
-FAOSTAT_TOKEN_TIMEOUT = 3600    # Seconds
+FAOSTAT_TOKEN_TIMEOUT = 3600 # Seconds
 FAOSTAT_BASE_URL = "https://faostatservices.fao.org/api/v1"
 FAOSTAT_EU_COUNTRY_CODES = ','.join([    "11",    # Austria
                                 "255",   # Belgium

@@ -4,12 +4,15 @@ from datetime import datetime, timedelta
 from io import StringIO
 import tempfile
 import os
-
+import sys
 import requests
 import pandas as pd
 import polars as pl
 
-from conf import (PROJECT_ROOT,
+from scripts.ingest import MinioClient, DeltaLakeClient
+from scripts.util import util
+
+from scripts.conf import (PROJECT_ROOT,
                          POLARS_S3_STORAGE_OPTIONS, 
                          DELTALAKE_TABLES,
                          FAOSTAT_BASE_URL,
@@ -20,8 +23,6 @@ from conf import (PROJECT_ROOT,
                          FAOSTAT_PWD,
                          FAOSTAT_UNAME)
 
-from src.ingest import MinioClient, DeltaLakeClient
-from src.util import util
 
 ### FAOSTAT API Wrapper
 # See https://www.fao.org/faostat/en/#developer-portal for more details on the API.

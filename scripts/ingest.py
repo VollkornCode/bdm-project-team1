@@ -6,20 +6,28 @@ import polars as pl
 import boto3
 import json
 import os
+import sys
 from botocore.exceptions import ClientError
-
-from conf import MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, DELTALAKE_STORAGE_OPTIONS
 
 class MinioClient:
     ''' Client for interacting with the MinIO data lake. '''
     
     def __init__(self):
+        # Import internally to ensure the latest config from conf.py is used
+        from scripts.conf import MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY
+        
+        self.endpoint = MINIO_ENDPOINT
         self.s3_client = boto3.client(
             's3',
-            endpoint_url=MINIO_ENDPOINT,
+            endpoint_url=self.endpoint,
             aws_access_key_id=MINIO_ACCESS_KEY,
             aws_secret_access_key=MINIO_SECRET_KEY
         )
+        # Verify connection immediately
+        try:
+            self.s3_client.list_buckets()
+        except Exception as e:
+            print(f"Error connecting to MinIO at {self.endpoint}: {e}")
 
     def create_buckets(self):
         #Create the two buckets our lab uses.
@@ -54,6 +62,8 @@ class DeltaLakeClient:
     ''' Client for interacting with Delta Lake tables. '''
     
     def __init__(self):
+        # Ensure it reads the latest storage options (endpoint, keys, etc.)
+        from scripts.conf import DELTALAKE_STORAGE_OPTIONS
         self.duckdb_conn = duckdb.connect()
         self.storage_options = DELTALAKE_STORAGE_OPTIONS
 

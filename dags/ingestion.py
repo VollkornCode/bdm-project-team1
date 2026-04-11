@@ -1,16 +1,20 @@
 from __future__ import annotations
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from airflow.sdk import dag, task
 
-from src.ingest import MinioClient, DeltaLakeClient
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from scripts.ingest import MinioClient, DeltaLakeClient
 
 import scripts.openfoodfacts as openfoodfacts
 import scripts.spoonocular as spoonocular
 import scripts.usda as usda
 import scripts.faostat as faostat
+import scripts.consumer as kafka_consumer
 
-from conf import (
+from scripts.conf import (
     OFF_PAGES,
     OFF_PAGE_SIZE,
     RECIPE_COUNT,
@@ -18,8 +22,8 @@ from conf import (
 )
 
 @dag(
-    dag_id="food_data_lakehouse_ingestion",
-    schedule=timedelta(hours=24),
+    dag_id="ingest_openfoodfacts_api",
+    schedule=timedelta(hours=12),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "food_data", "deltalake", "minio"],
@@ -28,13 +32,28 @@ from conf import (
         "retry_delay": timedelta(minutes=5),
     }
 )
-def api_to_lakehouse_pipeline():
+def openfoodfacts_airflow():
 
     @task()
     def ingest_openfoodfacts():
         m_client = MinioClient()
         d_client = DeltaLakeClient()
         openfoodfacts.init_fetch(m_client, d_client, OFF_PAGES, OFF_PAGE_SIZE)
+    
+    ingest_openfoodfacts()
+
+@dag(
+    dag_id="ingest_spoonacular_api",
+    schedule=timedelta(hours=12),
+    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
+    catchup=False,
+    tags=["project", "food_data", "deltalake", "minio"],
+    default_args={
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    }
+)
+def spoonacular_airflow():
 
     @task()
     def ingest_spoonacular():
@@ -42,11 +61,41 @@ def api_to_lakehouse_pipeline():
         d_client = DeltaLakeClient()
         spoonocular.init_fetch(m_client, d_client, RECIPE_COUNT)
 
+    ingest_spoonacular()
+
+@dag(
+    dag_id="ingest_usda_api",
+    schedule=timedelta(hours=12),
+    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
+    catchup=False,
+    tags=["project", "food_data", "deltalake", "minio"],
+    default_args={
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    }
+)
+def usda_airflow():
+
     @task()
     def ingest_usda():
         m_client = MinioClient()
         d_client = DeltaLakeClient()
         usda.init_fetch(m_client, d_client, QUERY)
+
+    ingest_usda()
+
+@dag(
+    dag_id="ingest_faostat_api",
+    schedule=timedelta(hours=12),
+    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
+    catchup=False,
+    tags=["project", "food_data", "deltalake", "minio"],
+    default_args={
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    }
+)
+def faostat_airflow():
 
     @task()
     def ingest_faostat():
@@ -54,11 +103,31 @@ def api_to_lakehouse_pipeline():
         d_client = DeltaLakeClient()
         faostat.init_fetch_food_cpi(m_client, d_client)
 
-    [
-        ingest_openfoodfacts(),
-        ingest_spoonacular(),
-        ingest_usda(),
-        ingest_faostat()
-    ]
+    ingest_faostat()
 
-api_to_lakehouse_pipeline()
+@dag(
+    dag_id="ingest_kafka",
+    schedule=timedelta(seconds=30),
+    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
+    catchup=False,
+    tags=["project", "food_data", "deltalake", "minio"],
+    default_args={
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    }
+)
+def kafka_airflow():
+
+    @task()
+    def ingest_kafka():
+        m_client = MinioClient()
+        # Consumimos del tópico que definiste en tu producer
+        kafka_consumer(m_client)
+
+    ingest_kafka()
+
+openfoodfacts_airflow()
+spoonacular_airflow()
+usda_airflow()
+faostat_airflow()
+kafka_airflow()
