@@ -1,89 +1,123 @@
-import os
 import json
 import requests
-import boto3
 import time
+import io
+import os
+import polars as pl
 from datetime import datetime
 
-# Import configuration constants from the central config file
+# Import clients and utilities
+from src.ingest import MinioClient, DeltaLakeClient
+from src.util import util
+
+# Import configuration constants
 from conf import (
+    POLARS_S3_STORAGE_OPTIONS, 
+    DELTALAKE_TABLES,
     OFF_BASE_URL,
     OFF_BASE_HEADER,
-    OFF_PAGES,
-    OFF_PAGE_SIZE,
-    MINIO_ENDPOINT,
-    MINIO_ACCESS_KEY,
-    MINIO_SECRET_KEY
 )
+
+class OpenFoodFactsClient:
+    ''' Client for interacting with the OpenFoodFacts API. '''
+    
+    def __init__(self):
+        self.base_url = OFF_BASE_URL
+        self.headers = OFF_BASE_HEADER
+        self.state_file = "ingestion_state.json"
+
+    def _get_last_processed_page(self) -> int:
+        ''' Reads the local state file to determine where to resume. '''
+        if os.path.exists(self.state_file):
+            try:
+                with open(self.state_file, "r") as f:
+                    state = json.load(f)
+                    return state.get("last_page", 0)
+            except Exception as e:
+                print(f"Error reading state file: {e}")
+        return 0
+
+    def _save_current_page(self, page: int):
+        ''' Persists the current page number to maintain ingestion state. '''
+        state = {
+            "last_page": page,
+            "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        with open(self.state_file, "w") as f:
+            json.dump(state, f, indent=4)
+
+    def fetch_page(self, page: int, page_size: int) -> dict:
+        ''' Fetches product data for a specific page. '''
+        params = {
+            "sort_by": "unique_scans_n",
+            "page": page,
+            "page_size": page_size,
+            "json": "true",
+            "fields": "code,product_name,brands,nutriments,countries,categories,image_url"
+        }
+        
+        response = requests.get(self.base_url, params=params, headers=self.headers, timeout=30)
+        
+        if response.status_code == 429:
+            print("429 Rate Limit reached! Waiting 60 seconds...")
+            time.sleep(60)
+            return self.fetch_page(page, page_size)
+            
+        response.raise_for_status()
+        return response.json()
 
 '''
 Note: The OpenFoodFacts API has a limit of 10 requests per minute for search queries.
 '''
-# ingests product data from OpenFoodFacts and uploads it to MinIO
-def ingest_off_automatic(pages, page_size):
-
-    # MinIO Client configuration using centralized variables.
-    s3 = boto3.client("s3", 
-                      endpoint_url=MINIO_ENDPOINT,
-                      aws_access_key_id=MINIO_ACCESS_KEY,
-                      aws_secret_access_key=MINIO_SECRET_KEY)
+def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient, pages_to_download: int, page_size: int):
     
-    bucket_name = "landing-zone"
-    target_folder = "temporal_landing/openfoodfacts/"
+    '''
+    Orchestrates the ingestion for OpenFoodFacts:
+    1. Fetches raw data from the API.
+    2. Uploads the 100% raw JSON to the 'raw-data' bucket.
+    3. Transfers the 100% content to the 'deltalake' bucket using Polars.
+    '''
+    
+    # Initialize Clients
+    off_client = OpenFoodFactsClient()
+    
+    # Ensure buckets exists
+    minio_client.create_buckets()
+    
+    # Resume logic from state file
+    last_page = off_client._get_last_processed_page()
+    start_page = last_page + 1
+    end_page = last_page + pages_to_download
 
-    print(f"--- Starting Automatic Ingestion (Rate Limit: 10 req/min) ---")
+    print(f"--- Starting OFF Ingestion: Resuming from page {start_page} ---")
 
-    # Page loop
-    for current_page in range(1, pages + 1):
-        params = {
-            "sort_by": "unique_scans_n", # Sort by popularity/scans
-            "page": current_page,
-            "page_size": page_size,
-            "json": "true",
-            "fields": "code,product_name,brands,nutriments,countries,categories"
-        }
+    for current_page in range(start_page, end_page + 1):
+        try:
+            # 1. Fetch data from API
+            data = off_client.fetch_page(current_page, page_size)
+            
+            if not data.get("products"):
+                print(f"No recipes found in the API response. Aborting.")
+                break
+            
+            # 2. Define naming convention and paths
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"off_page_{current_page}_{timestamp}.json"
+            object_key = f"openfoodfacts/{filename}"
+            s3_path = f"s3://raw-data/{object_key}"
+            
+            # 3. Upload the file to MinIO "raw-data" bucket.
+            minio_client.upload_file(data, "raw-data", object_key)
 
-        max_retries = 2  # Attempt each page up to 2 times if it fails
-        for attempt in range(max_retries):
-            try:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] Requesting page {current_page} (Attempt {attempt+1})...")
-                
-                # Using constants from config.conf for URL and headers
-                response = requests.get(OFF_BASE_URL, params=params, headers=OFF_BASE_HEADER, timeout=30)
-                
-                if response.status_code == 429:
-                    print("429 Rate Limit reached! Waiting 60 seconds...")
-                    time.sleep(60)
-                    continue # Retry the same page
+            # 4. Upload the file to MinIO "deltalake" bucket.
+            df_full = pl.read_json(s3_path, storage_options=POLARS_S3_STORAGE_OPTIONS)
+            delta_client.write_table(df_full, DELTALAKE_TABLES["OPENFOODFACTS"], partition_by=["brands"])
+            
+            off_client._save_current_page(current_page)
+            print(f"Success: Page {current_page} uploaded to s3://raw-data/{object_key}")
 
-                response.raise_for_status()
-                data = response.json()
+        except Exception as e:
+            print(f"Critical error on page {current_page}: {e}")
+            break
 
-                # MinIO Upload Logic
-                # Files are named using a timestamp to prevent overwriting
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                file_name = f"off_page_{current_page}_{timestamp}.json"
-                object_key = f"{target_folder}{file_name}"
-                
-                s3.put_object(
-                    Bucket=bucket_name,
-                    Key=object_key,
-                    Body=json.dumps(data, indent=4),
-                    ContentType='application/json'
-                )
-                print(f"Success: Page {current_page} synchronized to MinIO.")
-                break # Success: move to the next page
-
-            except (requests.exceptions.RequestException, Exception) as e:
-                print(f"Error on attempt {attempt+1} for page {current_page}: {e}")
-                if attempt < max_retries - 1:
-                    print("Waiting 15 seconds before retrying...")
-                    time.sleep(15)
-                else:
-                    print(f"Page {current_page} failed after {max_retries} attempts. Skipping...")
-
-    print("--- Ingestion process completed ---")
-
-if __name__ == "__main__":
-    # Download 3 test pages (approx. 60 products with page_size=20)
-    ingest_off_automatic(OFF_PAGES, OFF_PAGE_SIZE)
+    print("--- OpenFoodFacts Ingestion Completed ---")

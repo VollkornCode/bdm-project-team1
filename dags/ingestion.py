@@ -1,56 +1,64 @@
 from __future__ import annotations
 import os
-import json
-import boto3
 from datetime import datetime, timedelta, timezone
 from airflow.sdk import dag, task
 
-# Constants for your environment
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
-ACCESS_KEY     = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-SECRET_KEY     = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-BUCKET_NAME    = "landing-zone/temporal_landing"
+from src.ingest import MinioClient, DeltaLakeClient
+
+import scripts.openfoodfacts as openfoodfacts
+import scripts.spoonocular as spoonocular
+import scripts.usda as usda
+import scripts.faostat as faostat
+
+from conf import (
+    OFF_PAGES,
+    OFF_PAGE_SIZE,
+    RECIPE_COUNT,
+    QUERY
+)
 
 @dag(
-    dag_id="api_ingestion",
-    schedule=timedelta(hours=1),
+    dag_id="food_data_lakehouse_ingestion",
+    schedule=timedelta(hours=24),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
-    tags=["project", "api", "s3"]
+    tags=["project", "food_data", "deltalake", "minio"],
+    default_args={
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    }
 )
-def api_to_s3_pipeline():
+def api_to_lakehouse_pipeline():
 
     @task()
-    def fetch_and_upload(api_name: str, url: str):
-        import requests
-        
-        # 1. Get Data
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
+    def ingest_openfoodfacts():
+        m_client = MinioClient()
+        d_client = DeltaLakeClient()
+        openfoodfacts.init_fetch(m_client, d_client, OFF_PAGES, OFF_PAGE_SIZE)
 
-        # 2. Setup S3 Client
-        s3 = boto3.client(
-            's3',
-            endpoint_url=MINIO_ENDPOINT,
-            aws_access_key_id=ACCESS_KEY,
-            aws_secret_access_key=SECRET_KEY
-        )
+    @task()
+    def ingest_spoonacular():
+        m_client = MinioClient()
+        d_client = DeltaLakeClient()
+        spoonocular.init_fetch(m_client, d_client, RECIPE_COUNT)
 
-        # 3. Create a unique filename (using execution date is best practice)
-        filename = f"{api_name}/{datetime.now().strftime('%Y%m%d_%H%M')}.json"
+    @task()
+    def ingest_usda():
+        m_client = MinioClient()
+        d_client = DeltaLakeClient()
+        usda.init_fetch(m_client, d_client, QUERY)
 
-        # 4. Upload
-        s3.put_object(
-            Bucket=BUCKET_NAME,
-            Key=filename,
-            Body=json.dumps(data)
-        )
-        
-        return {"file_saved": filename}
+    @task()
+    def ingest_faostat():
+        m_client = MinioClient()
+        d_client = DeltaLakeClient()
+        faostat.init_fetch_food_cpi(m_client, d_client)
 
-    # Execute for your APIs
-    fetch_and_upload("users", "https://api.example.com/users")
-    fetch_and_upload("orders", "https://api.example.com/orders")
+    [
+        ingest_openfoodfacts(),
+        ingest_spoonacular(),
+        ingest_usda(),
+        ingest_faostat()
+    ]
 
-api_to_s3_pipeline()
+api_to_lakehouse_pipeline()

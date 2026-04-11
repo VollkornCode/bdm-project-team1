@@ -7,7 +7,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(f"Project root directory: {PROJECT_ROOT}")
 
 #LOAD ENVIRONMENT VARIABLES
-_dotenv_path = os.path.join(PROJECT_ROOT, "config", ".env")
+_dotenv_path = os.path.join(PROJECT_ROOT, ".env")
 print(f".env path: {_dotenv_path}")
 dotenv.load_dotenv(_dotenv_path)
 
@@ -22,19 +22,21 @@ MINIO_SECRET_KEY = os.getenv("MINIO_PW")
 
 ### API RELEVANT ENVIRONMNET VARIABLES AND CONSTANTS
 
-## SPOONOCULAR API
-SPOON_KEY = os.getenv("SPOON_KEY")
-SPOON_BASE_URL = url = "https://api.spoonacular.com/recipes/random"
-
-## USDA API
-USDA_KEY = os.getenv("USDA_KEY")
-USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
-
 ## OPENFOODFACT API
 OFF_BASE_URL = "https://world.openfoodfacts.org/api/v2/search"
 OFF_BASE_HEADER = {"User-Agent": "BigDataManagementProjectUniversitatPolitecnicaCatalunya/1.0 (contact: sergi.gonzalez.martos@estudiantat.upc.edu)"}
 OFF_PAGES = 1
 OFF_PAGE_SIZE = 10
+
+## SPOONOCULAR API
+SPOON_KEY = os.getenv("SPOON_KEY")
+SPOON_BASE_URL = url = "https://api.spoonacular.com/recipes/random"
+RECIPE_COUNT = 1
+
+## USDA API
+USDA_KEY = os.getenv("USDA_KEY")
+USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
+QUERY = "apple"
 
 ## FAOSTAT API
 FAOSTAT_UNAME = os.getenv("FAOSTAT_UNAME")
@@ -98,5 +100,8 @@ POLARS_S3_STORAGE_OPTIONS = {
 }
 
 DELTALAKE_TABLES = {
-    "FAOSTAT_FOOD_CPI": "s3://deltalake/faostat/food_cpi"
+    "FAOSTAT_FOOD_CPI": "s3://deltalake/faostat/food_cpi",
+    "OPENFOODFACTS": "s3://deltalake/openfoodfacts/off_recipes",
+    "SPOONOCULAR": "s3://deltalake/spoonocular/spo_recipes",
+    "USDA": "s3://deltalake/usda/usda_recipes"
 }

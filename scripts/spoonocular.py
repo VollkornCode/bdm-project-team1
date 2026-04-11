@@ -1,77 +1,95 @@
-import os
 import json
 import requests
-import boto3
+import time
+import io
+import os
+import polars as pl
 from datetime import datetime
 
-# Import configuration constants from the central config file.
+# Import clients and utilities
+from src.ingest import MinioClient, DeltaLakeClient
+from src.util import util
+
+# Import configuration constants
 from conf import (
+    POLARS_S3_STORAGE_OPTIONS, 
+    DELTALAKE_TABLES,
     SPOON_KEY,
-    SPOON_BASE_URL,
-    MINIO_ENDPOINT,
-    MINIO_ACCESS_KEY,
-    MINIO_SECRET_KEY
+    SPOON_BASE_URL
 )
+
+class SpoonacularClient:
+    ''' Client for interacting with the Spoonacular API. '''
+    
+    def __init__(self):
+        self.base_url = SPOON_BASE_URL
+        self.api_key = SPOON_KEY
+
+    def fetch_random_recipes(self, number: int = 10) -> dict:
+        ''' Fetches random recipes from the Spoonacular API. '''
+        params = {
+            "apiKey": self.api_key,
+            "number": number,
+            "includeNutrition": "true"
+        }
+        
+        response = requests.get(self.base_url, params=params, timeout=30)
+        
+        # Handle API rate limits (429 Too Many Requests)
+        if response.status_code == 429:
+            print("Spoonacular API quota reached! Waiting 60 seconds...")
+            time.sleep(60)
+            return self.fetch_random_recipes(number)
+            
+        response.raise_for_status()
+        return response.json()
 
 '''
 Note: Calling this endpoint requires 1 point and 0.01 points per recipe returned and 
-0.5 points per recipe returned if includeNutrition is set to true. 
+      0.5 points per recipe returned if includeNutrition is set to true. 
 '''
+def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient, recipe_count: int):
+    
+    ''' 
+    Orchestrates the ingestion for Spoonacular:
+    1. Fetches raw data from the API.
+    2. Uploads the 100% raw JSON to the 'raw-data' bucket.
+    3. Transfers the 100% content to the 'deltalake' bucket using Polars.
+    '''
+    
+    # Initialize API Client
+    spoon_client = SpoonacularClient()
+    
+    # Ensure buckets exists
+    minio_client.create_buckets()
 
-# Fetches random recipes from Spoonacular API and uploads the resulting JSON directly to MinIO
-def ingest_spoonacular():
-    
-    # MinIO Client configuration using centralized variables.
-    s3 = boto3.client("s3", 
-                      endpoint_url=MINIO_ENDPOINT,
-                      aws_access_key_id=MINIO_ACCESS_KEY,
-                      aws_secret_access_key=MINIO_SECRET_KEY)
-    
-    bucket_name = "landing-zone"
-    target_folder = "temporal_landing/spoon/"
-    
-    # Request Parameters
-    params = {
-        "apiKey": SPOON_KEY,
-        "number": 2,
-        "includeNutrition": "true"
-    }
-
-    print(f"Requesting {params['number']} random recipes from Spoonacular...")
+    print(f"--- Starting Spoonacular Ingestion: Requesting {recipe_count} recipes ---")
 
     try:
-        # 1. Execute GET request
-        # Uses SPOON_BASE_URL from configuration
-        response = requests.get(SPOON_BASE_URL, params=params)
-        response.raise_for_status() # Raise error for 4xx or 5xx responses
+        # 1. Fetch data from API
+        data = spoon_client.fetch_random_recipes(recipe_count)
         
-        data = response.json()
+        if not data.get("recipes"):
+            print("No recipes found in the API response. Aborting.")
+            return
 
-        # 2. Prepare file for MinIO
-        # Use timestamp to ensure unique filenames for each execution
+        # 2. Define naming convention and paths
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_name = f"random_recipes_{timestamp}.json"
-        object_key = f"{target_folder}{file_name}"
+        filename = f"recipes_{timestamp}.json"
+        object_key = f"spoonocular/{filename}"
+        s3_path_raw = f"s3://raw-data/{object_key}"
 
-        # Convert dictionary to JSON string
-        json_data = json.dumps(data, indent=4)
+        # 3. Upload the file to MinIO "raw-data" bucket.
+        minio_client.upload_file(data, "raw-data", object_key)
+        print(f"Success: Raw JSON uploaded to s3://raw-data/{object_key}")
 
-        # 3. Upload to MinIO
-        # Using put_object to upload data directly from memory without local storage
-        print(f"Uploading results to MinIO: {object_key}")
-        s3.put_object(
-            Bucket=bucket_name,
-            Key=object_key,
-            Body=json_data,
-            ContentType='application/json'
-        )
+        # 4. Upload the file to MinIO "deltalake" bucket.
+        df_full = pl.read_json(s3_path_raw, storage_options=POLARS_S3_STORAGE_OPTIONS)
+        delta_client.write_table(df_full, DELTALAKE_TABLES["SPOONOCULAR"], partition_by=["title"])
 
-        print("--- Spoonacular ingestion completed successfully ---")
+        print(f"Success: 100% of data registered in Delta Lake at {DELTALAKE_TABLES['SPOONOCULAR']}")
 
-    except requests.exceptions.HTTPError as err:
-        print(f"Spoonacular API request error: {err}")
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        print(f"Critical error during Spoonacular ingestion: {e}")
 
-if __name__ == "__main__":
-    ingest_spoonacular()
+    print("--- Spoonacular Ingestion Completed ---")
