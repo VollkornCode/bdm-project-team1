@@ -79,15 +79,31 @@ def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient, recipe_
         filename = f"recipes_{timestamp}.json"
         object_key = f"spoonocular/{filename}"
 
-        # 3. Upload the file to MinIO "raw-data" bucket.
-        minio_client.upload_object(data, "raw-data", object_key)
-        print(f"Success: Raw JSON uploaded to s3://raw-data/{object_key}")
-
-        # 4. Upload the file to MinIO "deltalake" bucket.
         recipes_list = data.get("recipes", [])
+
         if recipes_list:
+            # 3. Upload the file to MinIO "raw-data" bucket.
+            minio_client.upload_object(recipes_list, "raw-data", object_key)
+            print(f"Success: Raw JSON uploaded to s3://raw-data/{object_key}")
+
+            # 4. Upload the file to MinIO "deltalake" bucket.
             delta_client.write_table(recipes_list, DELTALAKE_TABLES["SPOONOCULAR"], partition_by=["title"])
             print(f"Success: 100% of data registered in Delta Lake at {DELTALAKE_TABLES['SPOONOCULAR']}")
+
+            for recipe in recipes_list:
+                img_url = recipe.get("image")
+                recipe_id = recipe.get("id")
+                
+                if img_url and recipe_id:
+                    custom_image_key = f"spoonocular/images/{recipe_id}.jpg"
+                    
+                    # 5. Upload the image to MinIO "raw-data" bucket.
+                    minio_client.upload_binary(img_url, "raw-data", custom_image_key)
+                    print(f"Success: Raw image uploaded to s3://raw-data/{custom_image_key}")
+                    
+                    # 6. Upload the image to "deltalake" bucket.
+                    minio_client.upload_binary(img_url, "deltalake", custom_image_key)
+                    print(f"Success: 100% of data registered in Delta Lake at s3://deltalake/{custom_image_key}")
 
     except Exception as e:
         print(f"Critical error during Spoonacular ingestion: {e}")

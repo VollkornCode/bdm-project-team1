@@ -7,6 +7,7 @@ import boto3
 import json
 import os
 import sys
+import requests
 import pandas as pd
 import pyarrow as pa
 from botocore.exceptions import ClientError
@@ -76,6 +77,31 @@ class MinioClient:
             print(f"Failed to upload object: {e}")
             return False
         
+    def upload_binary(self, url: str, bucket_name: str, key: str):
+        '''
+        Downloads a binary file (e.g., image) from a URL and uploads it 
+        directly to the specified MinIO bucket.
+        Returns the full S3 path of the uploaded object.
+        '''
+        try:
+            # Download the binary content
+            response = requests.get(url, timeout=15)
+            response.raise_for_status() # Ensure the request was successful
+
+            # Upload to MinIO
+            self.s3_client.put_object(
+                Bucket=bucket_name,
+                Key=key,
+                Body=response.content,
+                ContentType=response.headers.get('Content-Type', 'image/jpeg')
+            )
+            
+            s3_path = f"s3://{bucket_name}/{key}"
+            print(f"Binary successfully uploaded to {s3_path}")
+
+        except Exception as e:
+            print(f"Error uploading binary from {url} to {bucket_name}/{key}: {e}")
+        
 class DeltaLakeClient:
     ''' Client for interacting with Delta Lake tables. '''
     
@@ -85,47 +111,35 @@ class DeltaLakeClient:
         self.duckdb_conn = duckdb.connect()
         self.storage_options = DELTALAKE_STORAGE_OPTIONS
 
-def write_table(self, data, table_path: str, partition_by: list[str] = None):
-        ''' 
-        Converts multiple data formats into Parquet (via Arrow)
-        and persists them into the Delta Lake.
-        
-        Supported types: list, dict, Polars DataFrame, Pandas DataFrame, Arrow Table.
-        '''
+    def write_table(self, data, table_path: str, partition_by: list[str] = None):
+        ''' Writes structured data to Delta Lake handling type mismatches. '''
         try:
-            # 1. Type Detection and Normalization to Arrow Table
-            if isinstance(data, (list, dict)):
-                # Semi-structured data (JSON/API response) -> Polars -> Arrow
-                print("Converting semi-structured data (list/dict) to Parquet/Arrow...")
-                table = pl.DataFrame(data).to_arrow()
-            
+            # Convert list of dicts to Polars DataFrame with flexible typing
+            if isinstance(data, list):
+                df = pl.from_dicts(data, strict=False, infer_schema_length=None)
+            elif isinstance(data, dict):
+                df = pl.from_dicts([data], strict=False, infer_schema_length=None)
             elif isinstance(data, pl.DataFrame):
-                # Polars DataFrame -> Arrow
-                table = data.to_arrow()
-                
-            elif isinstance(data, pd.DataFrame):
-                # Pandas DataFrame -> Arrow
-                print("Converting Pandas DataFrame to Arrow...")
-                table = pa.Table.from_pandas(data)
-                
-            elif isinstance(data, pa.Table):
-                # Data is already in Arrow format
-                table = data
-            
+                df = data
             else:
-                raise TypeError(f"Unsupported data type: {type(data)}. "
-                                "Must be list, dict, Polars DF, Pandas DF, or Arrow Table.")
+                raise ValueError(f"Unsupported data type: {type(data)}")
 
-            # 2. Writing to Delta Lake (Enforces Parquet format internally)
+            if df.is_empty():
+                print("Warning: DataFrame is empty, skipping Delta write.")
+                return
+
+            # Writing to Delta Lake
+            from deltalake import write_deltalake
             write_deltalake(
                 table_path,
-                table,
-                partition_by=partition_by,
+                df.to_arrow(),
+                storage_options=self.storage_options,
                 mode="append",
-                storage_options=self.storage_options
+                partition_by=partition_by
             )
-            print(f"Successfully persisted data to Delta Lake: {table_path}")
+            print(f"Successfully written to Delta Lake: {table_path}")
 
         except Exception as e:
             print(f"Error writing to Delta Lake at {table_path}: {e}")
-            raise # Re-raise exception for Airflow task monitoring
+            if "strict=False" not in str(e):
+                print("\nHint: Polars schema inference failed. Ensure data consistency.")

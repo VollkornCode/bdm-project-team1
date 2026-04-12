@@ -9,8 +9,8 @@ from kafka.errors import NoBrokersAvailable
 
 KAFKA_BROKERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS","127.0.0.1:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC","user-info-raw")
-BATCH_SIZE = int(os.getenv("BATCH_SIZE","20"))
-INTERVAL_SECONDS = float(os.getenv("INTERVAL_SECONDS", "5"))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE","10"))
+INTERVAL_SECONDS = float(os.getenv("INTERVAL_SECONDS", "10"))
 
 from kafka.admin import KafkaAdminClient, NewTopic
 from kafka.errors import TopicAlreadyExistsError
