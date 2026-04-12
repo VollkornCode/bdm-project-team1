@@ -47,7 +47,7 @@ RECIPE_COUNT = 1
 ## USDA API
 USDA_KEY = os.getenv("USDA_KEY")
 USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
-QUERY = "apple"
+USDA_PAGE_SIZE = 5
 
 ## FAOSTAT API
 FAOSTAT_UNAME = os.getenv("FAOSTAT_UNAME")

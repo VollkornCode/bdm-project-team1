@@ -18,13 +18,12 @@ import scripts.openfood_prices as openfoodfacts_prices
 from scripts.conf import (
     OFF_PAGES,
     OFF_PAGE_SIZE,
-    RECIPE_COUNT,
-    QUERY
+    RECIPE_COUNT
 )
 
 @dag(
     dag_id="ingest_openfoodfacts_recipes_api",
-    schedule=timedelta(minutes=5),
+    schedule=timedelta(minutes=30),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "food_data", "deltalake", "minio"],
@@ -45,7 +44,7 @@ def openfoodfacts_recipes_airflow():
 
 @dag(
     dag_id="ingest_openfoodfacts_prices_api",
-    schedule=timedelta(minutes=5),
+    schedule=timedelta(minutes=30),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "food_data", "deltalake", "minio"],
@@ -66,7 +65,7 @@ def openfoodfacts_prices_airflow():
 
 @dag(
     dag_id="ingest_spoonacular_api",
-    schedule=timedelta(hours=12),
+    schedule=timedelta(hours=6),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "food_data", "deltalake", "minio"],
@@ -87,7 +86,7 @@ def spoonacular_airflow():
 
 @dag(
     dag_id="ingest_usda_api",
-    schedule=timedelta(hours=12),
+    schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "food_data", "deltalake", "minio"],
@@ -102,13 +101,13 @@ def usda_airflow():
     def ingest_usda():
         m_client = MinioClient()
         d_client = DeltaLakeClient()
-        usda.init_fetch(m_client, d_client, QUERY)
+        usda.init_fetch(m_client, d_client)
 
     ingest_usda()
 
 @dag(
     dag_id="ingest_faostat_api",
-    schedule=timedelta(hours=12),
+    schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "food_data", "deltalake", "minio"],
