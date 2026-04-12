@@ -36,6 +36,9 @@ OFF_BASE_HEADER = {"User-Agent": "BigDataManagementProjectUniversitatPolitecnica
 OFF_PAGES = 1
 OFF_PAGE_SIZE = 10
 
+OFFP_BASE_URL = "https://prices.openfoodfacts.org/api/v1/prices"
+OFFP_BASE_HEADER = {"User-Agent": "BDM-Project-Team1/1.0 (Student Project)"}
+
 ## SPOONOCULAR API
 SPOON_KEY = os.getenv("SPOON_KEY")
 SPOON_BASE_URL = url = "https://api.spoonacular.com/recipes/random"
@@ -108,8 +111,9 @@ POLARS_S3_STORAGE_OPTIONS = {
 }
 
 DELTALAKE_TABLES = {
-    "FAOSTAT_FOOD_CPI": "s3://deltalake/faostat/food_cpi",
-    "OPENFOODFACTS": "s3://deltalake/openfoodfacts/off_recipes",
-    "SPOONOCULAR": "s3://deltalake/spoonocular/spo_recipes",
-    "USDA": "s3://deltalake/usda/usda_recipes"
+    "FAOSTAT_FOOD_CPI": "s3://deltalake/faostat/",
+    "OPENFOODFACTS_RECIPES": "s3://deltalake/openfoodfacts/recipes/",
+    "OPENFOODFACTS_PRICES": "s3://deltalake/openfoodfacts/prices/",
+    "SPOONOCULAR": "s3://deltalake/spoonocular/",
+    "USDA": "s3://deltalake/usda/"
 }

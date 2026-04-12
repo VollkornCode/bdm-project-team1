@@ -15,7 +15,7 @@ from scripts.conf import (
     POLARS_S3_STORAGE_OPTIONS, 
     DELTALAKE_TABLES,
     OFF_BASE_URL,
-    OFF_BASE_HEADER,
+    OFF_BASE_HEADER
 )
 
 class OpenFoodFactsClient:
@@ -25,7 +25,7 @@ class OpenFoodFactsClient:
         self.base_url = OFF_BASE_URL
         self.headers = OFF_BASE_HEADER
         base_path = os.path.dirname(os.path.abspath(__file__))
-        self.state_file = os.path.join(base_path, "ingestion_state.json")
+        self.state_file = os.path.join(base_path, "openfood_recipes_state.json")
 
     def _get_last_processed_page(self) -> int:
         ''' Reads the local state file to determine where to resume. '''
@@ -104,7 +104,7 @@ def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient, pages_t
             # 2. Define naming convention and paths
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"off_page_{current_page}_{timestamp}.json"
-            object_key = f"openfoodfacts/{filename}"
+            object_key = f"openfoodfacts/recipes/{filename}"
             
             # 3. Upload the file to MinIO "raw-data" bucket.
             minio_client.upload_object(data, "raw-data", object_key)
@@ -113,9 +113,9 @@ def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient, pages_t
             # 4. Upload the file to MinIO "deltalake" bucket.
             products_list = data.get("products", [])
             if products_list:
-                delta_client.write_table(products_list, DELTALAKE_TABLES["OPENFOODFACTS"], partition_by=["brands"])
+                delta_client.write_table(products_list, DELTALAKE_TABLES["OPENFOODFACTS_RECIPES"], partition_by=None)
                 off_client._save_current_page(current_page)
-                print(f"Success: Page {current_page} uploaded to s3://raw-data/{object_key}")
+                print(f"Success: Page {current_page} uploaded to s3://deltalake/{object_key}")
 
         except Exception as e:
             print(f"Critical error on page {current_page}: {e}")

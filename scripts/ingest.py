@@ -112,24 +112,62 @@ class DeltaLakeClient:
         self.storage_options = DELTALAKE_STORAGE_OPTIONS
 
     def write_table(self, data, table_path: str, partition_by: list[str] = None):
-        ''' Writes structured data to Delta Lake handling type mismatches. '''
+
         try:
-            # Convert list of dicts to Polars DataFrame with flexible typing
+            # 1. Convert to Polars DataFrame
             if isinstance(data, list):
                 df = pl.from_dicts(data, strict=False, infer_schema_length=None)
             elif isinstance(data, dict):
                 df = pl.from_dicts([data], strict=False, infer_schema_length=None)
-            elif isinstance(data, pl.DataFrame):
-                df = data
             else:
-                raise ValueError(f"Unsupported data type: {type(data)}")
+                df = data
 
             if df.is_empty():
-                print("Warning: DataFrame is empty, skipping Delta write.")
                 return
 
-            # Writing to Delta Lake
-            from deltalake import write_deltalake
+            bad_cols = []
+
+            for col in df.columns:
+                dtype = df[col].dtype
+
+                if (
+                    dtype == pl.Null
+                    or df[col].null_count() == df.height
+                    or isinstance(dtype, pl.List)
+                    or isinstance(dtype, pl.Struct)
+                    or dtype == pl.Object
+                ):
+                    bad_cols.append(col)
+
+            # 🔧 FIX
+            for col in bad_cols:
+                dtype = df[col].dtype
+
+                if isinstance(dtype, pl.List) or isinstance(dtype, pl.Struct):
+                    # 👉 serializar a JSON string
+                    df = df.with_columns(
+                        pl.col(col)
+                        .map_elements(lambda x: str(x) if x is not None else "NULL")
+                        .alias(col)
+                    )
+                else:
+                    # 👉 caso simple
+                    df = df.with_columns(
+                        pl.col(col)
+                        .cast(pl.Utf8, strict=False)
+                        .fill_null("NULL")
+                        .alias(col)
+                    )
+
+            print(f"Fixed schema for problematic columns: {bad_cols}")
+
+            # 4. FINAL SAFETY: ensure no Null dtypes remain
+            df = df.select([
+                pl.col(c).cast(pl.Utf8) if df[c].dtype == pl.Null else pl.col(c)
+                for c in df.columns
+            ])
+
+            # 5. Write
             write_deltalake(
                 table_path,
                 df.to_arrow(),
@@ -137,9 +175,8 @@ class DeltaLakeClient:
                 mode="append",
                 partition_by=partition_by
             )
-            print(f"Successfully written to Delta Lake: {table_path}")
+
+            print(f"Successfully registered data in Delta Lake at {table_path}")
 
         except Exception as e:
             print(f"Error writing to Delta Lake at {table_path}: {e}")
-            if "strict=False" not in str(e):
-                print("\nHint: Polars schema inference failed. Ensure data consistency.")

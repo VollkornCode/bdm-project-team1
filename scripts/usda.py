@@ -87,7 +87,7 @@ def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient, query: 
         # 4. Upload the file to MinIO "deltalake" bucket.
         foods_list = data.get("foods", [])
         if foods_list:
-            delta_client.write_table(foods_list, DELTALAKE_TABLES["USDA"], partition_by=["foodCategory"])        
+            delta_client.write_table(foods_list, DELTALAKE_TABLES["USDA"], partition_by=None)        
             print(f"Step 2: 100% of content registered in Delta Lake at {DELTALAKE_TABLES['USDA']}")
 
     except Exception as e:

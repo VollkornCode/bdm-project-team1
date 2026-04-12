@@ -113,7 +113,7 @@ def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient):
     # cleaned_data = clean_utils.clean_food_cpi_data(f"s3://raw-data/faostat/{filename}")
 
     delta_df = pl.from_dataframe(food_cpi_data)
-    delta_client.write_table(delta_df, DELTALAKE_TABLES["FAOSTAT_FOOD_CPI"], partition_by=["Year"])
+    delta_client.write_table(delta_df, DELTALAKE_TABLES["FAOSTAT_FOOD_CPI"], partition_by=None)
 
     # Remove temporary directory and its contents
     util.rmdir_recursively(tmp_dir)

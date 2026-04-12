@@ -87,7 +87,7 @@ def init_fetch(minio_client: MinioClient, delta_client: DeltaLakeClient, recipe_
             print(f"Success: Raw JSON uploaded to s3://raw-data/{object_key}")
 
             # 4. Upload the file to MinIO "deltalake" bucket.
-            delta_client.write_table(recipes_list, DELTALAKE_TABLES["SPOONOCULAR"], partition_by=["title"])
+            delta_client.write_table(recipes_list, DELTALAKE_TABLES["SPOONOCULAR"], partition_by=None)
             print(f"Success: 100% of data registered in Delta Lake at {DELTALAKE_TABLES['SPOONOCULAR']}")
 
             for recipe in recipes_list:
