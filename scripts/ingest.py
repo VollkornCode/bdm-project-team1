@@ -35,7 +35,7 @@ class MinioClient:
     def create_buckets(self):
         #Create the two buckets our lab uses.
         # MinIO raises BucketAlreadyOwnedByYou if the bucket exists — that is fine.
-        for bucket in ["raw-data", "deltalake"]:
+        for bucket in ["raw-data", "deltalake", "trusted-zone"]:
             try:
                 self.s3_client.create_bucket(Bucket=bucket)
                 print(f"Created  : s3://{bucket}")
@@ -75,6 +75,24 @@ class MinioClient:
             return True
         except Exception as e:
             print(f"Failed to upload object: {e}")
+            return False
+        
+    def upload_binary_bytes(self, binary_data: bytes, bucket_name: str, key: str) -> bool:
+        '''
+        Uploads raw binary bytes (e.g., a processed image) directly 
+        to the specified MinIO bucket.
+        '''
+        try:
+            self.s3_client.put_object(
+                Bucket=bucket_name,
+                Key=key,
+                Body=binary_data,
+                ContentType='image/jpeg'
+            )
+            print(f"Binary bytes successfully uploaded to s3://{bucket_name}/{key}")
+            return True
+        except Exception as e:
+            print(f"Error uploading binary bytes to {bucket_name}/{key}: {e}")
             return False
         
     def upload_binary(self, url: str, bucket_name: str, key: str):
