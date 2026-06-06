@@ -187,60 +187,50 @@ def faostat_airflow():
     ingest_faostat()
 
 @dag(
-    dag_id="ingest_kafka",
-    schedule=timedelta(seconds=10),
-    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
-    catchup=False,
-    tags=["project", "food_data", "deltalake", "minio"],
-    default_args={
-        "retries": 1,
-        "retry_delay": timedelta(minutes=5),
-    }
-)
-def kafka_airflow():
-
-    @task()
-    def ingest_kafka():
-        m_client = MinioClient()
-        kafka_consumer.init_fetch(m_client)
-
-    ingest_kafka()
-
-@dag(
-    dag_id="trusted_JSON",
+    dag_id="streaming_image_pipeline",
+    # Hourly restarts: SparkSubmitOperator runs for ~55 min then Airflow
+    # relaunches the job, recovering from any transient failure automatically.
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
-    tags=["project", "trusted_zone", "pyspark", "minio", "JSON"],
+    max_active_runs=1,          # Only one streaming Spark instance at a time
+    tags=["project", "streaming", "milvus", "clip", "exploitation_zone"],
     default_args={
         "retries": 1,
-        "retry_delay": timedelta(minutes=5),
+        "retry_delay": timedelta(minutes=2),
     }
 )
-def trusted_JSON_airflow():
+def streaming_image_airflow():
 
-    trusted_JSON = SparkSubmitOperator(
-        task_id="trusted_JSON",
-        application="/opt/airflow/scripts/sparkJSON.py",
+    streaming_images = SparkSubmitOperator(
+        task_id="streaming_images",
+        application="/opt/airflow/scripts/sparkStreaming.py",
         conn_id="spark_default",
-        name="ExplotationImagePipeline",
+        name="StreamingImagePipeline",
         application_args=[],
+        conf={
+            "spark.jars.packages": (
+                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0"
+            ),
+            "spark.driver.memory": "4g",
+            "spark.executor.memory": "1g",
+        },
         env_vars={
             "PYTHONPATH": "/opt/airflow"
         },
+        execution_timeout=timedelta(minutes=55),
         jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
     )
 
-    trusted_JSON
+    streaming_images
 
-trusted_JSON_airflow()
+streaming_image_airflow()
 
 openfoodfacts_recipes_airflow()
 openfoodfacts_prices_airflow()
 spoonacular_airflow()
 trusted_images_airflow()
 explotation_images_airflow()
+streaming_image_airflow()
 usda_airflow()
 faostat_airflow()
-kafka_airflow()
-trusted_JSON_airflow()

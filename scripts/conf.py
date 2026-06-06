@@ -11,6 +11,8 @@ _dotenv_path = os.path.join(PROJECT_ROOT, ".env")
 print(f".env path: {_dotenv_path}")
 dotenv.load_dotenv(_dotenv_path)
 
+DEVICE = "cpu"
+
 ### MINIO 
 # Connection settings
 IN_DOCKER = os.path.exists('/.dockerenv')
@@ -21,12 +23,17 @@ MINIO_SECRET_KEY = os.getenv("MINIO_PW")
 
 ### USER KAFKA
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092" if IN_DOCKER else "localhost:9092")
-KAFKA_TOPIC="user-info-raw"
+KAFKA_TOPIC="user-image-events"
 KAFKA_GROUP ="default-group"
-BATCH_SIZE = 20
-INTERVAL_SECONDS = 5
+BATCH_SIZE = 1
+INTERVAL_SECONDS = 60
 CONSUMER_TIMEOUT_MS= 5000
 DELTA_TABLE_PATH = "./data/delta_lake/json_blob_table"
+
+### MILVUS
+MILVUS_HOST     = "milvus"
+MILVUS_PORT     = "19530"
+COLLECTION_NAME = "recipe_images"
 
 
 ### API RELEVANT ENVIRONMNET VARIABLES AND CONSTANTS
