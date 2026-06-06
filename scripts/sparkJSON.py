@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession
 from scripts.ingest import MinioClient, DeltaLakeClient
-import scripts.trustedJSON as trustedJSON
+import scripts.trustedParquet as trustedParquet
 
 
 def main():
@@ -23,15 +23,25 @@ def main():
         "org.apache.hadoop.fs.s3a.S3AFileSystem"
     )
 
-    m_client = MinioClient()
+    d_client = DeltaLakeClient()
 
-    trustedJSON.init_trusted_JSON_pipeline(
+    print("=== SPOONACULAR ===")
+    trustedParquet.init_trusted_parquet_pipeline(
         spark=spark,
-        minio_client=m_client,
-        landing_path="s3a://raw-data/**/*.json",
-        trusted_path="JSON_files/"
+        delta_client=d_client,
+        landing_path="s3a://deltalake/spoonocular/", 
+        trusted_path="s3a://trusted-zone/spoonocular/"
     )
 
+    print("=== USDA ===")
+    trustedParquet.init_trusted_parquet_pipeline(
+        spark=spark,
+        delta_client=d_client,
+        landing_path="s3a://deltalake/usda/", 
+        trusted_path="s3a://trusted-zone/usda/"
+    )
+
+    print("=== ENDING ALL SPARK TASKS ===")
     spark.stop()
 
 

@@ -207,20 +207,20 @@ def kafka_airflow():
     ingest_kafka()
 
 @dag(
-    dag_id="trusted_JSON",
+    dag_id="trusted_parquet",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
-    tags=["project", "trusted_zone", "pyspark", "minio", "JSON"],
+    tags=["project", "trusted_zone", "pyspark", "minio", "parquet"],
     default_args={
         "retries": 1,
         "retry_delay": timedelta(minutes=5),
     }
 )
-def trusted_JSON_airflow():
+def trusted_parquet_airflow():
 
-    trusted_JSON = SparkSubmitOperator(
-        task_id="trusted_JSON",
+    trusted_parquet = SparkSubmitOperator(
+        task_id="trusted_parquet",
         application="/opt/airflow/scripts/sparkJSON.py",
         conn_id="spark_default",
         name="ExplotationImagePipeline",
@@ -231,9 +231,9 @@ def trusted_JSON_airflow():
         jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
     )
 
-    trusted_JSON
+    trusted_parquet
 
-trusted_JSON_airflow()
+trusted_parquet_airflow()
 
 openfoodfacts_recipes_airflow()
 openfoodfacts_prices_airflow()
@@ -243,4 +243,4 @@ explotation_images_airflow()
 usda_airflow()
 faostat_airflow()
 kafka_airflow()
-trusted_JSON_airflow()
+trusted_parquet_airflow()
