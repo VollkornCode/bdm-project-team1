@@ -35,7 +35,7 @@ class MinioClient:
     def create_buckets(self):
         #Create the two buckets our lab uses.
         # MinIO raises BucketAlreadyOwnedByYou if the bucket exists — that is fine.
-        for bucket in ["raw-data", "deltalake", "trusted-zone", "explotation-zone"]:
+        for bucket in ["raw-data", "deltalake", "trusted-zone", "exploitation-zone"]:
             try:
                 self.s3_client.create_bucket(Bucket=bucket)
                 print(f"Created  : s3://{bucket}")
