@@ -5,12 +5,8 @@ import scripts.trustedParquet as trustedParquet
 
 def _list_source_folders(minio_client: MinioClient, bucket: str) -> list[str]:
     """
-    List immediate subfolders inside *bucket* using the MinIO s3_client (boto3).
+    List immediate subfolders inside *bucket* using the boto3 s3_client.
     Returns folder names without trailing slash, e.g. ['spoonocular', 'usda'].
-
-    Uses the boto3 paginator with Delimiter='/' so S3 returns CommonPrefixes
-    (virtual folders) instead of individual objects — equivalent to 'ls' on
-    the bucket root without recursing into subfolders.
     """
     paginator = minio_client.s3_client.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=bucket, Delimiter="/")
@@ -18,10 +14,8 @@ def _list_source_folders(minio_client: MinioClient, bucket: str) -> list[str]:
     folders = []
     for page in pages:
         for prefix in page.get("CommonPrefixes", []):
-            # Each CommonPrefix looks like "spoonocular/" — strip the slash.
             folder = prefix["Prefix"].rstrip("/")
             folders.append(folder)
-
     return folders
 
 
@@ -48,8 +42,6 @@ def main():
     m_client = MinioClient()
     d_client = DeltaLakeClient()
 
-    # Discover subfolders dynamically from MinIO instead of relying on S3A
-    # root listing, which can silently skip prefixes in some MinIO versions.
     source_folders = _list_source_folders(m_client, bucket="deltalake")
     print(f"=== Discovered source folders: {source_folders} ===")
 
@@ -58,8 +50,9 @@ def main():
         trustedParquet.init_trusted_parquet_pipeline(
             spark=spark,
             delta_client=d_client,
+            minio_client=m_client,
             landing_path=f"s3a://deltalake/{folder}/",
-            trusted_path=f"s3a://trusted-zone/"
+            trusted_path="s3a://trusted-zone/"
         )
 
     print("=== ENDING ALL SPARK TASKS ===")
