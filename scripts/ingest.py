@@ -5,11 +5,7 @@ import duckdb
 import polars as pl
 import boto3
 import json
-import os
-import sys
 import requests
-import pandas as pd
-import pyarrow as pa
 from botocore.exceptions import ClientError
 
 class MinioClient:

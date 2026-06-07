@@ -499,6 +499,26 @@ services:
       - ./notebooks:/home/jovyan/notebooks
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    env_file:
+      - ${ENV_FILE_PATH:-.env}
+    environment:
+      MINIO_ENDPOINT: 'http://minio:9000'
+      MINIO_ACCESS_KEY: 'minioadmin'
+      MINIO_SECRET_KEY: 'minioadmin'
+      PYTHONPATH: /app/src:/app
+    volumes:
+      - ./:/app
+    ports:
+      - "8501:8501"
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres-db-volume:
   minio_data:
