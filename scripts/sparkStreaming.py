@@ -1,0 +1,327 @@
+"""
+sparkStreaming.py — Spark Structured Streaming entrypoint for real-time
+                    image similarity and recipe text search.
+
+Orchestration only: this script reads from Kafka, routes each event by
+``event_type``, and delegates work to the appropriate domain scripts:
+
+  Image pipeline  (event_type == "image")
+  ─────────────────────────────────────────
+  imagePreprocessing.py  — download + validate + resize images
+  clipModel.py           — CLIP embedding + Milvus Top-1 search
+
+  Text pipeline   (event_type == "recipe_text")
+  ──────────────────────────────────────────────
+  recipeTextModel.py     — MiniLM embedding + Milvus Top-1 search
+
+Data flow per micro-batch
+─────────────────────────
+  Kafka  →  parse JSON  →  route by event_type
+         →  [image]      imagePreprocessing → CLIPMilvusClient
+                         → write {image_url, filename} JSON to MinIO
+         →  [recipe_text] RecipeMilvusClient
+                         → write {search_input, matched_recipe_id} JSON to MinIO
+
+Usage
+─────
+  spark-submit \\
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \\
+      sparkStreaming.py
+"""
+
+from __future__ import annotations
+
+import os
+
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.types import StringType, StructField, StructType
+
+from scripts.imagePreprocessing import preprocess_urls
+from scripts.clipModel import CLIPMilvusClient
+from scripts.recipeTextModel import RecipeMilvusClient
+
+# ── Config (overridable via environment variables) ─────────────────────────────
+
+KAFKA_BROKERS   = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+KAFKA_TOPIC     = os.getenv("KAFKA_TOPIC", "user-image-events")
+
+# Image pipeline outputs
+IMAGE_OUTPUT_PATH     = os.getenv(
+    "EXPLOITATION_OUTPUT_PATH",
+    "s3a://exploitation-zone/streaming_image_matches/",
+)
+IMAGE_CHECKPOINT_PATH = os.getenv(
+    "CHECKPOINT_PATH",
+    "s3a://exploitation-zone/checkpoints/streaming_image/",
+)
+
+# Recipe text pipeline outputs
+TEXT_OUTPUT_PATH     = os.getenv(
+    "TEXT_OUTPUT_PATH",
+    "s3a://exploitation-zone/streaming_recipe_matches/",
+)
+TEXT_CHECKPOINT_PATH = os.getenv(
+    "TEXT_CHECKPOINT_PATH",
+    "s3a://exploitation-zone/checkpoints/streaming_recipe/",
+)
+
+TRIGGER_SECONDS = int(os.getenv("TRIGGER_SECONDS", "30"))
+
+# Image pipeline Milvus settings
+MILVUS_HOST          = os.getenv("MILVUS_HOST", "milvus")
+MILVUS_PORT          = int(os.getenv("MILVUS_PORT", "19530"))
+IMAGE_COLLECTION     = os.getenv("MILVUS_COLLECTION", "recipe_images")
+
+# Text pipeline Milvus settings
+TEXT_COLLECTION      = os.getenv("MILVUS_TEXT_COLLECTION", "recipe_texts")
+
+DEVICE          = os.getenv("CLIP_DEVICE", "cpu")
+
+# ── Kafka JSON schema ──────────────────────────────────────────────────────────
+
+EVENT_SCHEMA = StructType([
+    StructField("event_type", StringType(), True),   # "image" | "recipe_text"
+    StructField("timestamp",  StringType(), True),
+    StructField("user_id",    StringType(), True),
+    StructField("image_url",  StringType(), True),   # set for "image" events
+    StructField("query_text", StringType(), True),   # set for "recipe_text" events
+])
+
+# ── Image micro-batch handler ──────────────────────────────────────────────────
+
+class StreamingImageProcessor:
+    """
+    Handles micro-batches whose event_type == "image".
+    Holds the CLIPMilvusClient as state so the model is loaded only once.
+    """
+
+    def __init__(self) -> None:
+        self._client = CLIPMilvusClient(
+            milvus_host=MILVUS_HOST,
+            milvus_port=MILVUS_PORT,
+            collection_name=IMAGE_COLLECTION,
+            device=DEVICE,
+        )
+
+    def process_batch(self, batch_df, batch_id: int) -> None:
+        """
+        Entry point called for every image micro-batch.
+
+        Parameters
+        ----------
+        batch_df : pyspark.sql.DataFrame
+            Schema: (image_url STRING)
+        batch_id : int
+            Monotonically increasing micro-batch sequence number.
+        """
+        count = batch_df.count()
+        if count == 0:
+            print(f"[ImageBatch {batch_id}] Empty — skipping.")
+            return
+
+        print(f"[ImageBatch {batch_id}] Received {count} events.")
+
+        # ── Step 1: collect URLs to driver ─────────────────────────────────────
+        urls: list[str] = [row["image_url"] for row in batch_df.collect()]
+
+        # ── Step 2: download + preprocess (imagePreprocessing.py) ──────────────
+        clean_images = preprocess_urls(urls)
+
+        if not clean_images:
+            print(f"[ImageBatch {batch_id}] No valid images after preprocessing — skipping.")
+            return
+
+        # ── Step 3: embed + Milvus search (clipModel.py) ───────────────────────
+        results = self._client.query(clean_images)
+
+        if not results:
+            print(f"[ImageBatch {batch_id}] No Milvus matches — nothing to store.")
+            return
+
+        # ── Step 4: write results to Exploitation Zone (MinIO) ─────────────────
+        print(f"[ImageBatch {batch_id}] Writing {len(results)} results to '{IMAGE_OUTPUT_PATH}'…")
+        spark = SparkSession.getActiveSession()
+        (
+            spark.createDataFrame(results)
+            .write
+            .mode("append")
+            .json(IMAGE_OUTPUT_PATH)
+        )
+        print(f"[ImageBatch {batch_id}] Done.")
+
+
+# ── Recipe text micro-batch handler ───────────────────────────────────────────
+
+class StreamingRecipeProcessor:
+    """
+    Handles micro-batches whose event_type == "recipe_text".
+    Holds the RecipeMilvusClient as state so the model is loaded only once.
+    """
+
+    def __init__(self) -> None:
+        self._client = RecipeMilvusClient(
+            milvus_host=MILVUS_HOST,
+            milvus_port=MILVUS_PORT,
+            collection_name=TEXT_COLLECTION,
+            device=DEVICE,
+        )
+
+    def process_batch(self, batch_df, batch_id: int) -> None:
+        """
+        Entry point called for every recipe-text micro-batch.
+
+        Parameters
+        ----------
+        batch_df : pyspark.sql.DataFrame
+            Schema: (query_text STRING)
+        batch_id : int
+            Monotonically increasing micro-batch sequence number.
+        """
+        count = batch_df.count()
+        if count == 0:
+            print(f"[TextBatch {batch_id}] Empty — skipping.")
+            return
+
+        print(f"[TextBatch {batch_id}] Received {count} events.")
+
+        # ── Step 1: collect queries to driver ──────────────────────────────────
+        queries: list[str] = [row["query_text"] for row in batch_df.collect()]
+
+        # ── Step 2: embed + Milvus search (recipeTextModel.py) ─────────────────
+        results = self._client.query(queries)
+
+        if not results:
+            print(f"[TextBatch {batch_id}] No Milvus matches — nothing to store.")
+            return
+
+        # ── Step 3: write results to Exploitation Zone (MinIO) ─────────────────
+        print(f"[TextBatch {batch_id}] Writing {len(results)} results to '{TEXT_OUTPUT_PATH}'…")
+        spark = SparkSession.getActiveSession()
+        (
+            spark.createDataFrame(results)
+            .write
+            .mode("append")
+            .json(TEXT_OUTPUT_PATH)
+        )
+        print(f"[TextBatch {batch_id}] Done.")
+
+
+# ── Unified micro-batch dispatcher ─────────────────────────────────────────────
+
+class StreamingDispatcher:
+    """
+    Routes each micro-batch to the correct processor based on event_type.
+    Both processors are instantiated once and reused across micro-batches.
+    """
+
+    def __init__(self) -> None:
+        self._image_processor  = StreamingImageProcessor()
+        self._recipe_processor = StreamingRecipeProcessor()
+
+    def process_batch(self, batch_df, batch_id: int) -> None:
+        """
+        Called by Spark for every micro-batch of the full merged stream.
+        Splits the batch into image and recipe_text subsets and delegates
+        each to its processor.
+
+        Parameters
+        ----------
+        batch_df : pyspark.sql.DataFrame
+            Schema: (event_type STRING, image_url STRING, query_text STRING)
+        batch_id : int
+        """
+        total = batch_df.count()
+        if total == 0:
+            print(f"[Batch {batch_id}] Empty — skipping.")
+            return
+
+        print(f"[Batch {batch_id}] Received {total} events — routing by event_type.")
+
+        # Cache to avoid re-reading Kafka for each filter
+        batch_df.cache()
+
+        # ── Image events ───────────────────────────────────────────────────────
+        image_df = (
+            batch_df
+            .filter(F.col("event_type") == "image")
+            .select(F.col("image_url"))
+            .filter(F.col("image_url").isNotNull())
+        )
+        self._image_processor.process_batch(image_df, batch_id)
+
+        # ── Recipe text events ─────────────────────────────────────────────────
+        text_df = (
+            batch_df
+            .filter(F.col("event_type") == "recipe_text")
+            .select(F.col("query_text"))
+            .filter(F.col("query_text").isNotNull())
+        )
+        self._recipe_processor.process_batch(text_df, batch_id)
+
+        batch_df.unpersist()
+
+# ── Streaming job ──────────────────────────────────────────────────────────────
+
+def main() -> None:
+    spark = (
+        SparkSession.builder
+        .appName("StreamingUnifiedPipeline")
+        .config("spark.driver.memory", "4g")   # CLIP model requires ~700 MB
+        .getOrCreate()
+    )
+
+    # ── S3A / MinIO settings ───────────────────────────────────────────────────
+    conf = spark._jsc.hadoopConfiguration()
+    conf.set("fs.s3a.endpoint",               "http://minio:9000")
+    conf.set("fs.s3a.path.style.access",      "true")
+    conf.set("fs.s3a.connection.ssl.enabled", "false")
+    conf.set("fs.s3a.access.key",             "minioadmin")
+    conf.set("fs.s3a.secret.key",             "minioadmin")
+    conf.set("fs.s3a.impl",                   "org.apache.hadoop.fs.s3a.S3AFileSystem")
+
+    # ── Kafka source ───────────────────────────────────────────────────────────
+    raw_stream = (
+        spark.readStream
+        .format("kafka")
+        .option("kafka.bootstrap.servers", KAFKA_BROKERS)
+        .option("subscribe", KAFKA_TOPIC)
+        .option("startingOffsets", "latest")
+        .option("failOnDataLoss", "false")
+        .load()
+    )
+
+    # ── Parse JSON — keep event_type, image_url and query_text ────────────────
+    parsed_stream = (
+        raw_stream
+        .select(
+            F.from_json(F.col("value").cast("string"), EVENT_SCHEMA).alias("data")
+        )
+        .select(
+            F.col("data.event_type").alias("event_type"),
+            F.col("data.image_url").alias("image_url"),
+            F.col("data.query_text").alias("query_text"),
+        )
+        .filter(F.col("event_type").isin("image", "recipe_text"))
+    )
+
+    # ── Start streaming query with unified dispatcher ──────────────────────────
+    dispatcher = StreamingDispatcher()
+
+    query = (
+        parsed_stream.writeStream
+        .foreachBatch(dispatcher.process_batch)
+        .option("checkpointLocation", IMAGE_CHECKPOINT_PATH)
+        .trigger(processingTime=f"{TRIGGER_SECONDS} seconds")
+        .start()
+    )
+
+    print(
+        f"--- Unified streaming pipeline started — topic '{KAFKA_TOPIC}', "
+        f"micro-batch every {TRIGGER_SECONDS}s ---"
+    )
+    query.awaitTermination()
+
+
+if __name__ == "__main__":
+    main()

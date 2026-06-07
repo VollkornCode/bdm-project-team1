@@ -262,24 +262,29 @@ def explotation_recipes_airflow():
     explotation_recipes
 
 @dag(
-    dag_id="streaming_recipe_pipeline",
+    dag_id="streaming_pipeline",
+    # Hourly restarts: SparkSubmitOperator runs for ~55 min then Airflow
+    # relaunches the job, recovering from any transient failure automatically.
+    # sparkStreaming.py routes each Kafka message internally by event_type:
+    #   "image"       -> image preprocessing + CLIP + Milvus
+    #   "recipe_text" -> MiniLM + Milvus
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     max_active_runs=1,          # Only one streaming Spark instance at a time
-    tags=["project", "streaming", "milvus", "minilm", "exploitation_zone"],
+    tags=["project", "streaming", "milvus", "clip", "minilm", "exploitation_zone"],
     default_args={
         "retries": 1,
         "retry_delay": timedelta(minutes=2),
     }
 )
-def streaming_recipe_airflow():
+def streaming_airflow():
 
-    streaming_recipes = SparkSubmitOperator(
-        task_id="streaming_recipes",
-        application="/opt/airflow/scripts/sparkStreamingRecipes.py",
+    streaming = SparkSubmitOperator(
+        task_id="streaming",
+        application="/opt/airflow/scripts/sparkStreaming.py",
         conn_id="spark_default",
-        name="StreamingRecipeTextPipeline",
+        name="StreamingUnifiedPipeline",
         application_args=[],
         conf={
             "spark.jars.packages": (
@@ -295,7 +300,7 @@ def streaming_recipe_airflow():
         jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
     )
 
-    streaming_recipes
+    streaming
 
 openfoodfacts_recipes_airflow()
 openfoodfacts_prices_airflow()
@@ -307,4 +312,4 @@ faostat_airflow()
 kafka_airflow()
 trusted_parquet_airflow()
 explotation_recipes_airflow()
-streaming_recipe_airflow()
+streaming_airflow()
