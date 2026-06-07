@@ -129,8 +129,15 @@ class DeltaLakeClient:
         self.duckdb_conn = duckdb.connect()
         self.storage_options = DELTALAKE_STORAGE_OPTIONS
 
-    def write_table(self, data, table_path: str, partition_by: list[str] = None):
+    def read_table(self, table_path: str) -> pl.DataFrame:
+        try:
+            table = DeltaTable(table_path, storage_options=self.storage_options)
+            return pl.from_arrow(table.to_pyarrow_table())
+        except Exception as e:
+            print(f"Error reading Delta Lake at {table_path}: {e}")
+            raise
 
+    def write_table(self, data, table_path: str, partition_by: list[str] = None, mode: str = "append"):
         try:
             # 1. Convert to Polars DataFrame
             if isinstance(data, list):
@@ -190,7 +197,7 @@ class DeltaLakeClient:
                 table_path,
                 df.to_arrow(),
                 storage_options=self.storage_options,
-                mode="append",
+                mode=mode,
                 partition_by=partition_by
             )
 

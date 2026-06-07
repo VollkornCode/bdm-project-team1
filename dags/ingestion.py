@@ -184,7 +184,23 @@ def faostat_airflow():
         d_client = DeltaLakeClient()
         faostat.init_fetch(m_client, d_client)
 
-    ingest_faostat()
+    @task()
+    def trusted_faostat():
+        m_client = MinioClient()
+        d_client = DeltaLakeClient()
+        faostat.init_trusted_faostat(m_client, d_client)
+
+    @task()
+    def exploitation_faostat():
+        m_client = MinioClient()
+        d_client = DeltaLakeClient()
+        faostat.init_exploitation_faostat(m_client, d_client)
+
+    ingest_task = ingest_faostat()
+    trusted_task = trusted_faostat()
+    exploitation_task = exploitation_faostat()
+
+    ingest_task >> trusted_task >> exploitation_task
 
 @dag(
     dag_id="ingest_kafka",
