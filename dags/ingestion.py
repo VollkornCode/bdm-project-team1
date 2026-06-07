@@ -233,7 +233,69 @@ def trusted_parquet_airflow():
 
     trusted_parquet
 
-trusted_parquet_airflow()
+
+@dag(
+    dag_id="explotation_recipes",
+    schedule=timedelta(hours=1),
+    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
+    catchup=False,
+    tags=["project", "explotation_zone", "pyspark", "minio", "milvus"],
+    default_args={
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    }
+)
+def explotation_recipes_airflow():
+
+    explotation_recipes = SparkSubmitOperator(
+        task_id="explotation_recipes",
+        application="/opt/airflow/scripts/sparkMRecipes.py",
+        conn_id="spark_default",
+        name="ExplotationMultiSourceRecipePipeline",
+        application_args=[],
+        env_vars={
+            "PYTHONPATH": "/opt/airflow"
+        },
+        jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
+    )
+
+    explotation_recipes
+
+@dag(
+    dag_id="streaming_recipe_pipeline",
+    schedule=timedelta(hours=1),
+    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
+    catchup=False,
+    max_active_runs=1,          # Only one streaming Spark instance at a time
+    tags=["project", "streaming", "milvus", "minilm", "exploitation_zone"],
+    default_args={
+        "retries": 1,
+        "retry_delay": timedelta(minutes=2),
+    }
+)
+def streaming_recipe_airflow():
+
+    streaming_recipes = SparkSubmitOperator(
+        task_id="streaming_recipes",
+        application="/opt/airflow/scripts/sparkStreamingRecipes.py",
+        conn_id="spark_default",
+        name="StreamingRecipeTextPipeline",
+        application_args=[],
+        conf={
+            "spark.jars.packages": (
+                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0"
+            ),
+            "spark.driver.memory": "4g",
+            "spark.executor.memory": "1g",
+        },
+        env_vars={
+            "PYTHONPATH": "/opt/airflow"
+        },
+        execution_timeout=timedelta(minutes=55),
+        jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
+    )
+
+    streaming_recipes
 
 openfoodfacts_recipes_airflow()
 openfoodfacts_prices_airflow()
@@ -244,3 +306,5 @@ usda_airflow()
 faostat_airflow()
 kafka_airflow()
 trusted_parquet_airflow()
+explotation_recipes_airflow()
+streaming_recipe_airflow()
