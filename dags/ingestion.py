@@ -16,6 +16,7 @@ import scripts.faostat as faostat
 import scripts.consumer as kafka_consumer
 import scripts.openfood_prices as openfoodfacts_prices
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 from scripts.conf import (
     OFF_PAGES,
@@ -87,7 +88,7 @@ def spoonacular_airflow():
     ingest_spoonacular()
 
 @dag(
-    dag_id="process_trusted_images",
+    dag_id="trustedZone_images",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -116,7 +117,7 @@ def trusted_images_airflow():
 trusted_images_airflow()
 
 @dag(
-    dag_id="explotation_images",
+    dag_id="explotationZone_images",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -187,27 +188,7 @@ def faostat_airflow():
     ingest_faostat()
 
 @dag(
-    dag_id="ingest_kafka",
-    schedule=timedelta(seconds=10),
-    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
-    catchup=False,
-    tags=["project", "food_data", "deltalake", "minio"],
-    default_args={
-        "retries": 1,
-        "retry_delay": timedelta(minutes=5),
-    }
-)
-def kafka_airflow():
-
-    @task()
-    def ingest_kafka():
-        m_client = MinioClient()
-        kafka_consumer.init_fetch(m_client)
-
-    ingest_kafka()
-
-@dag(
-    dag_id="trusted_parquet",
+    dag_id="trustedZone_recipes",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -235,7 +216,7 @@ def trusted_parquet_airflow():
 
 
 @dag(
-    dag_id="explotation_recipes",
+    dag_id="explotationZone_recipes",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -262,12 +243,7 @@ def explotation_recipes_airflow():
     explotation_recipes
 
 @dag(
-    dag_id="streaming_pipeline",
-    # Hourly restarts: SparkSubmitOperator runs for ~55 min then Airflow
-    # relaunches the job, recovering from any transient failure automatically.
-    # sparkStreaming.py routes each Kafka message internally by event_type:
-    #   "image"       -> image preprocessing + CLIP + Milvus
-    #   "recipe_text" -> MiniLM + Milvus
+    dag_id="useCases",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -302,6 +278,80 @@ def streaming_airflow():
 
     streaming
 
+@dag(
+    dag_id="pipeline_images",
+    schedule=timedelta(hours=1),
+    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
+    catchup=False,
+    max_active_runs=1,
+    tags=["project", "pipeline", "trusted_zone", "explotation_zone", "pyspark", "minio", "milvus"],
+    default_args={
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    }
+)
+def pipeline_images_airflow():
+
+    trusted_images = SparkSubmitOperator(
+        task_id="trusted_images",
+        application="/opt/airflow/scripts/spark.py",
+        conn_id="spark_default",
+        name="TrustedImagePipeline",
+        application_args=[],
+        env_vars={
+            "PYTHONPATH": "/opt/airflow"
+        },
+        jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
+    )
+
+    trigger_explotation_images = TriggerDagRunOperator(
+        task_id="trigger_explotation_images",
+        trigger_dag_id="explotationZone_images",
+        wait_for_completion=True,
+        poke_interval=30,
+        reset_dag_run=True,
+    )
+
+    trusted_images >> trigger_explotation_images
+
+
+@dag(
+    dag_id="pipeline_recipes",
+    schedule=timedelta(hours=1),
+    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
+    catchup=False,
+    max_active_runs=1,
+    tags=["project", "pipeline", "trusted_zone", "explotation_zone", "pyspark", "minio", "milvus", "parquet"],
+    default_args={
+        "retries": 1,
+        "retry_delay": timedelta(minutes=5),
+    }
+)
+def pipeline_recipes_airflow():
+
+    trusted_parquet = SparkSubmitOperator(
+        task_id="trusted_parquet",
+        application="/opt/airflow/scripts/sparkJSON.py",
+        conn_id="spark_default",
+        name="TrustedRecipePipeline",
+        application_args=[],
+        env_vars={
+            "PYTHONPATH": "/opt/airflow"
+        },
+        jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
+    )
+
+    trigger_explotation_recipes = TriggerDagRunOperator(
+        task_id="trigger_explotation_recipes",
+        trigger_dag_id="explotationZone_recipes",
+        wait_for_completion=True,
+        poke_interval=30,
+        reset_dag_run=True,
+    )
+
+    trusted_parquet >> trigger_explotation_recipes
+
+
 openfoodfacts_recipes_airflow()
 openfoodfacts_prices_airflow()
 spoonacular_airflow()
@@ -309,7 +359,8 @@ trusted_images_airflow()
 explotation_images_airflow()
 usda_airflow()
 faostat_airflow()
-kafka_airflow()
 trusted_parquet_airflow()
 explotation_recipes_airflow()
 streaming_airflow()
+pipeline_images_airflow()
+pipeline_recipes_airflow()
