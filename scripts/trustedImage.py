@@ -92,7 +92,7 @@ class TrustedImageClient:
             # Build full s3a paths for each new file key
             paths = [f"s3a://raw-data/{key}" for key in new_files]
             print(f"[Load] Reading {len(paths)} new image file(s)...")
-            self.df = self.spark.read.format("binaryFile").load(*paths)
+            self.df = self.spark.read.format("binaryFile").load(paths)
         else:
             print(f"[Load] Reading all images from: {self.landing_path}")
             self.df = self.spark.read.format("binaryFile").load(self.landing_path)
@@ -230,7 +230,6 @@ def init_trusted_image_pipeline(
         raise
 
     finally:
-        spark.stop()
         print("=" * 60)
         print("--- Trusted Image Pipeline Completed ---")
         print("=" * 60)
