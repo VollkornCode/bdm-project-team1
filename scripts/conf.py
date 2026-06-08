@@ -112,8 +112,8 @@ POLARS_S3_STORAGE_OPTIONS = {
 
 DELTALAKE_TABLES = {
     "FAOSTAT_FOOD_CPI": "s3://deltalake/faostat/",
-    "FAOSTAT_FOOD_CPI_TRUSTED": "s3://deltalake/trusted/faostat/",
-    "FAOSTAT_FOOD_CPI_EXPLOITATION": "s3://deltalake/exploitation/faostat/",
+    "FAOSTAT_FOOD_CPI_TRUSTED": "s3://trusted-zone/faostat/",
+    "FAOSTAT_FOOD_CPI_EXPLOITATION": "s3://exploitation-zone/faostat/",
     "OPENFOODFACTS_RECIPES": "s3://deltalake/openfoodfacts/recipes/",
     "OPENFOODFACTS_PRICES": "s3://deltalake/openfoodfacts/prices/",
     "SPOONOCULAR": "s3://deltalake/spoonocular/",

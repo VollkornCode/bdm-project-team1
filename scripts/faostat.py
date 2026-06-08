@@ -160,7 +160,7 @@ def init_trusted_faostat(minio_client: MinioClient, delta_client: DeltaLakeClien
     df = delta_client.read_table(landing_path)
     cleaned_df = df
 
-    delta_client.write_table(cleaned_df, trusted_path, partition_by=["Year"] if "Year" in cleaned_df.columns else None)
+    delta_client.write_table(cleaned_df, trusted_path, partition_by=None)
 
 
 def init_exploitation_faostat(minio_client: MinioClient, delta_client: DeltaLakeClient):
@@ -188,4 +188,4 @@ def init_exploitation_faostat(minio_client: MinioClient, delta_client: DeltaLake
     aggregated_columns.append(pl.len().alias("row_count"))
 
     exploitation_df = df.group_by(group_columns).agg(aggregated_columns).sort(group_columns)
-    delta_client.write_table(exploitation_df, exploitation_path, partition_by=["Year"] if "Year" in exploitation_df.columns else None)
+    delta_client.write_table(exploitation_df, exploitation_path, partition_by=["Country"] if "Country" in exploitation_df.columns else None)
