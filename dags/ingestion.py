@@ -88,7 +88,7 @@ def spoonacular_airflow():
     ingest_spoonacular()
 
 @dag(
-    dag_id="trustedZone_images",
+    dag_id="trusted_images_airflow",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -115,7 +115,7 @@ def trusted_images_airflow():
     process_images
 
 @dag(
-    dag_id="explotationZone_images",
+    dag_id="explotation_images_airflow",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -163,7 +163,7 @@ def usda_airflow():
     ingest_usda()
 
 @dag(
-    dag_id="ingest_faostat_api",
+    dag_id="faostat_airflow",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -200,34 +200,7 @@ def faostat_airflow():
     ingest_task >> trusted_task >> exploitation_task
 
 @dag(
-    dag_id="trusted_parquet",
-    schedule=timedelta(hours=1),
-    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
-    catchup=False,
-    tags=["project", "trusted_zone", "pyspark", "minio", "parquet"],
-    default_args={
-        "retries": 1,
-        "retry_delay": timedelta(minutes=5),
-    }
-)
-def trusted_parquet_airflow():
-
-    trusted_parquet = SparkSubmitOperator(
-        task_id="trusted_parquet",
-        application="/opt/airflow/scripts/sparkJSON.py",
-        conn_id="spark_default",
-        name="ExplotationImagePipeline",
-        application_args=[],
-        env_vars={
-            "PYTHONPATH": "/opt/airflow"
-        },
-        jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
-    )
-
-    trusted_parquet
-
-@dag(
-    dag_id="pipeline_images",
+    dag_id="pipeline_images_airflow",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -264,7 +237,7 @@ def pipeline_images_airflow():
 
 
 @dag(
-    dag_id="pipeline_recipes",
+    dag_id="pipeline_recipes_airflow",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -300,7 +273,7 @@ def pipeline_recipes_airflow():
     trusted_parquet >> trigger_explotation_recipes
 
 @dag(
-    dag_id="useCases",
+    dag_id="streaming_airflow",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -336,7 +309,7 @@ def streaming_airflow():
     streaming
 
 @dag(
-    dag_id="trustedZone_recipes",
+    dag_id="trusted_parquet_airflow",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -363,7 +336,7 @@ def trusted_parquet_airflow():
     trusted_parquet
 
 @dag(
-    dag_id="explotationZone_recipes",
+    dag_id="explotation_recipes_airflow",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
@@ -392,13 +365,12 @@ def explotation_recipes_airflow():
 openfoodfacts_recipes_airflow()
 openfoodfacts_prices_airflow()
 spoonacular_airflow()
-trusted_images_airflow()
-explotation_images_airflow()
-trusted_parquet_airflow()
-explotation_recipes_airflow()
 usda_airflow()
 faostat_airflow()
 trusted_parquet_airflow()
+explotation_recipes_airflow()
+trusted_images_airflow()
+explotation_images_airflow()
 pipeline_recipes_airflow()
 pipeline_images_airflow()
 streaming_airflow()
