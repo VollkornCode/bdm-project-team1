@@ -8,8 +8,6 @@ import json
 from scripts.ingest import MinioClient, DeltaLakeClient
 
 
-# ── Processed file registry ────────────────────────────────────────────────────
-
 REGISTRY_BUCKET = "trusted-zone"
 REGISTRY_PREFIX = "_processed_registry"
 
@@ -19,10 +17,6 @@ def _registry_key(folder: str) -> str:
 
 
 def _load_registry(minio_client: MinioClient, folder: str) -> set[str]:
-    """
-    Load the set of already-processed image filenames for *folder*.
-    Returns an empty set if no registry exists yet.
-    """
     key = _registry_key(folder)
     try:
         response = minio_client.s3_client.get_object(Bucket=REGISTRY_BUCKET, Key=key)
@@ -39,9 +33,6 @@ def _load_registry(minio_client: MinioClient, folder: str) -> set[str]:
 
 
 def _save_registry(minio_client: MinioClient, folder: str, processed_files: set[str]) -> None:
-    """
-    Persist the updated set of processed image filenames to MinIO.
-    """
     key = _registry_key(folder)
     data = json.dumps({"processed_files": sorted(processed_files)}, indent=2)
     minio_client.s3_client.put_object(
@@ -54,10 +45,6 @@ def _save_registry(minio_client: MinioClient, folder: str, processed_files: set[
 
 
 def _list_image_files(minio_client: MinioClient, bucket: str, prefix: str) -> list[str]:
-    """
-    List all image filenames currently under s3://{bucket}/{prefix}.
-    Returns full object keys, e.g. ['spoonacular/images/img1.jpg'].
-    """
     paginator = minio_client.s3_client.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
@@ -71,8 +58,6 @@ def _list_image_files(minio_client: MinioClient, bucket: str, prefix: str) -> li
     return files
 
 
-# ── Main client ────────────────────────────────────────────────────────────────
-
 class TrustedImageClient:
 
     def __init__(self, spark: SparkSession, landing_path: str, trusted_path: str, image_size=(224, 224)):
@@ -84,12 +69,7 @@ class TrustedImageClient:
         self.df = None
 
     def load_data_image(self, new_files: list[str] | None = None):
-        """
-        Load raw images from the Landing Zone in binary format.
-        If *new_files* is provided, only those specific files are read.
-        """
         if new_files:
-            # Build full s3a paths for each new file key
             paths = [f"s3a://raw-data/{key}" for key in new_files]
             print(f"[Load] Reading {len(paths)} new image file(s)...")
             self.df = self.spark.read.format("binaryFile").load(paths)
@@ -101,7 +81,6 @@ class TrustedImageClient:
         return self.df
 
     def clean_data_image(self):
-        """Validate images, convert to RGB, resize, and extract filename."""
         image_size = self.image_size
 
         def clean_image(binary_content):
@@ -133,7 +112,6 @@ class TrustedImageClient:
         return self.df
 
     def store_data_image(self, minio_client: MinioClient):
-        """Collect processed bytes and upload them to the Trusted Zone via MinioClient."""
         minio_client.create_buckets()
 
         print("[Store] Collecting cleaned images to upload to MinIO...")
@@ -160,45 +138,29 @@ class TrustedImageClient:
         print(f"[Store] Successfully processed and stored {uploaded_count} images.")
 
 
-# ── Orchestration ──────────────────────────────────────────────────────────────
-
 def init_trusted_image_pipeline(
     spark: SparkSession,
     minio_client: MinioClient,
     landing_path: str,
     trusted_path: str,
 ) -> None:
-    """
-    Incremental ETL pipeline for images.
 
-    On each run:
-      1. Lists all image files in the landing bucket/prefix.
-      2. Loads the registry of already-processed files from MinIO.
-      3. Computes the diff — only new files are processed.
-      4. Runs Load -> Clean -> Store on new files only.
-      5. Updates the registry with the newly processed files.
-    """
     print("=" * 60)
     print("--- Starting Trusted Image Pipeline ---")
     print(f"    Landing path : {landing_path}")
     print(f"    Trusted path : {trusted_path}")
     print("=" * 60)
 
-    # Derive bucket and prefix from landing_path: s3a://raw-data/spoonacular/images/
-    # → bucket = "raw-data", prefix = "spoonacular/images/"
     stripped = landing_path.replace("s3a://", "").replace("s3://", "")
     bucket, _, prefix = stripped.partition("/")
     folder = prefix.strip("/").replace("/", "__")  # used as registry key, e.g. "spoonacular__images"
 
     try:
-        # ── 1. Discover all available image files ──────────────────────────────
         all_files = _list_image_files(minio_client, bucket, prefix)
         print(f"[Incremental] Found {len(all_files)} total image(s) in '{bucket}/{prefix}'.")
 
-        # ── 2. Load registry of already-processed files ────────────────────────
         processed = _load_registry(minio_client, folder)
 
-        # ── 3. Compute diff ────────────────────────────────────────────────────
         new_files = [f for f in all_files if f not in processed]
         print(
             f"[Incremental] {len(new_files)} new image(s) to process "
@@ -209,7 +171,6 @@ def init_trusted_image_pipeline(
             print("[Incremental] Nothing to do — all images already processed.")
             return
 
-        # ── 4. ETL on new files only ───────────────────────────────────────────
         client = TrustedImageClient(
             spark=spark,
             landing_path=landing_path,
@@ -221,7 +182,6 @@ def init_trusted_image_pipeline(
         client.clean_data_image()
         client.store_data_image(minio_client)
 
-        # ── 5. Update registry ─────────────────────────────────────────────────
         updated = processed | set(new_files)
         _save_registry(minio_client, folder, updated)
 
@@ -233,10 +193,3 @@ def init_trusted_image_pipeline(
         print("=" * 60)
         print("--- Trusted Image Pipeline Completed ---")
         print("=" * 60)
-
-
-if __name__ == "__main__":
-    init_trusted_image_pipeline(
-        landing_path="s3a://raw-data/spoonacular/images/",
-        trusted_path="spoonacular_images/",
-    )

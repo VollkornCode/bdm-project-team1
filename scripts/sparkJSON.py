@@ -4,10 +4,6 @@ import scripts.trustedParquet as trustedParquet
 
 
 def _list_source_folders(minio_client: MinioClient, bucket: str) -> list[str]:
-    """
-    List immediate subfolders inside *bucket* using the boto3 s3_client.
-    Returns folder names without trailing slash, e.g. ['spoonocular', 'usda'].
-    """
     paginator = minio_client.s3_client.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=bucket, Delimiter="/")
 
@@ -55,7 +51,6 @@ def main():
             trusted_path="s3a://trusted-zone/"
         )
 
-    print("=== ENDING ALL SPARK TASKS ===")
     spark.stop()
 
 

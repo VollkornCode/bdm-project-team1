@@ -41,8 +41,6 @@ def _flatten_struct_columns(df: DataFrame) -> DataFrame:
     return df
 
 
-# ── Processed file registry ────────────────────────────────────────────────────
-
 REGISTRY_BUCKET = "trusted-zone"
 REGISTRY_PREFIX = "_processed_registry"
 
@@ -52,10 +50,6 @@ def _registry_key(folder: str) -> str:
 
 
 def _load_registry(minio_client: MinioClient, folder: str) -> set[str]:
-    """
-    Load the set of already-processed parquet filenames for *folder*.
-    Returns an empty set if no registry exists yet.
-    """
     key = _registry_key(folder)
     try:
         response = minio_client.s3_client.get_object(Bucket=REGISTRY_BUCKET, Key=key)
@@ -72,9 +66,6 @@ def _load_registry(minio_client: MinioClient, folder: str) -> set[str]:
 
 
 def _save_registry(minio_client: MinioClient, folder: str, processed_files: set[str]) -> None:
-    """
-    Persist the updated set of processed parquet filenames to MinIO.
-    """
     key = _registry_key(folder)
     data = json.dumps({"processed_files": sorted(processed_files)}, indent=2)
     minio_client.s3_client.put_object(
@@ -87,10 +78,6 @@ def _save_registry(minio_client: MinioClient, folder: str, processed_files: set[
 
 
 def _list_parquet_files(minio_client: MinioClient, folder: str) -> list[str]:
-    """
-    List all .parquet filenames currently in s3://deltalake/{folder}/.
-    Returns just the filenames (not full paths), e.g. ['part-00000.parquet'].
-    """
     paginator = minio_client.s3_client.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket="deltalake", Prefix=f"{folder}/")
 
@@ -116,12 +103,7 @@ class TrustedParquetClient:
         self._partitioned_dfs: dict[str, DataFrame] = {}
 
     def load_data(self, new_files: list[str] | None = None) -> DataFrame:
-        """
-        Load parquet files from the Landing Zone.
-        If *new_files* is provided, only those specific files are read.
-        """
         if new_files:
-            # Build full s3a paths for each new file key
             paths = [f"s3a://deltalake/{key}" for key in new_files]
             print(f"[Load] Reading {len(paths)} new Parquet file(s)...")
             self.df = (
@@ -216,8 +198,6 @@ class TrustedParquetClient:
         print(f"[Store] Done.")
 
 
-# ── Orchestration ──────────────────────────────────────────────────────────────
-
 def init_trusted_parquet_pipeline(
     spark: SparkSession,
     delta_client: DeltaLakeClient,
@@ -225,34 +205,21 @@ def init_trusted_parquet_pipeline(
     landing_path: str,
     trusted_path: str,
 ) -> None:
-    """
-    Incremental ETL pipeline for Parquet files.
-
-    On each run:
-      1. Lists all .parquet files in the landing folder.
-      2. Loads the registry of already-processed files from MinIO.
-      3. Computes the diff — only new files are processed.
-      4. Runs Load → Clean → Store on new files only.
-      5. Updates the registry with the newly processed files.
-    """
+    
     print("=" * 60)
     print("--- Starting Trusted Parquet Pipeline ---")
     print(f"    Landing path : {landing_path}")
     print(f"    Trusted path : {trusted_path}")
     print("=" * 60)
 
-    # Extract folder name from landing_path (e.g. "spoonocular" from "s3a://deltalake/spoonocular/")
     folder = landing_path.rstrip("/").split("/")[-1]
 
     try:
-        # ── 1. Discover all available parquet files ────────────────────────────
         all_files = _list_parquet_files(minio_client, folder)
         print(f"[Incremental] Found {len(all_files)} total .parquet file(s) in '{folder}'.")
 
-        # ── 2. Load registry of already-processed files ────────────────────────
         processed = _load_registry(minio_client, folder)
 
-        # ── 3. Compute diff ────────────────────────────────────────────────────
         new_files = [f for f in all_files if f not in processed]
         print(f"[Incremental] {len(new_files)} new file(s) to process "
               f"({len(all_files) - len(new_files)} already processed — skipping).")
@@ -261,7 +228,6 @@ def init_trusted_parquet_pipeline(
             print("[Incremental] Nothing to do — all files already processed.")
             return
 
-        # ── 4. ETL on new files only ───────────────────────────────────────────
         client = TrustedParquetClient(
             spark=spark,
             landing_path=landing_path,
@@ -272,7 +238,6 @@ def init_trusted_parquet_pipeline(
         client.clean_data()
         client.store_data(delta_client)
 
-        # ── 5. Update registry ─────────────────────────────────────────────────
         updated = processed | set(new_files)
         _save_registry(minio_client, folder, updated)
 

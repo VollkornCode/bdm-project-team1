@@ -169,14 +169,12 @@ class DeltaLakeClient:
                 dtype = df[col].dtype
 
                 if isinstance(dtype, pl.List) or isinstance(dtype, pl.Struct):
-                    # 👉 serializar a JSON string
                     df = df.with_columns(
                         pl.col(col)
                         .map_elements(lambda x: str(x) if x is not None else "NULL")
                         .alias(col)
                     )
                 else:
-                    # 👉 caso simple
                     df = df.with_columns(
                         pl.col(col)
                         .cast(pl.Utf8, strict=False)

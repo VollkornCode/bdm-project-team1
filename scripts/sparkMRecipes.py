@@ -1,10 +1,3 @@
-"""
-sparkMRecipes.py — Unified Batch Spark entrypoint for the recipe pipeline.
-
-Configures MinIO S3A connections and drives the loading extraction of
-usda, spoonocular, and openfoodfacts sources into Milvus.
-"""
-
 from __future__ import annotations
 
 from pyspark.sql import SparkSession
@@ -32,8 +25,6 @@ def main() -> None:
         "s3a://trusted-zone/openfoodfacts/"
     ]
 
-    print("=== STARTING ALL SPARK TASKS 2 ===")
-
     init_exploitation_recipe_pipeline(
         spark=spark,
         trusted_paths=target_sources,
@@ -44,7 +35,6 @@ def main() -> None:
         device="cpu"
     )
 
-    print("=== ENDING ALL SPARK TASKS ===")
     spark.stop()
 
 

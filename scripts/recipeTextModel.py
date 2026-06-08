@@ -1,11 +1,3 @@
-"""
-recipeTextModel.py — MiniLM embedding and Milvus similarity search for recipes.
-
-Receives text search queries from the streaming pipeline, generates sentence
-embeddings via HuggingFace, queries Milvus for the Top-1 match, and returns
-structured results ready to be appended as JSON in MinIO exploitation zone.
-"""
-
 from __future__ import annotations
 
 from typing import Optional
@@ -14,15 +6,12 @@ import numpy as np
 from pymilvus import Collection, connections
 from transformers import AutoModel, AutoTokenizer
 
-# ── Constants ──────────────────────────────────────────────────────────────────
 
 TEXT_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIM   = 384
 
-# ── Model helpers ─────────────────────────────────────────────────────────────
 
 def _load_text_model(device: str = "cpu") -> tuple[AutoTokenizer, AutoModel]:
-    """Load the MiniLM tokenizer and model. Downloads on first run (~90 MB)."""
     print(f"  [recipeTextModel] Loading model '{TEXT_MODEL_NAME}' on {device}…")
     tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL_NAME)
     model     = AutoModel.from_pretrained(TEXT_MODEL_NAME).to(device)
@@ -32,7 +21,6 @@ def _load_text_model(device: str = "cpu") -> tuple[AutoTokenizer, AutoModel]:
 
 
 def _mean_pool(token_embeddings: "torch.Tensor", attention_mask: "torch.Tensor") -> "torch.Tensor":
-    """Attention-mask-weighted mean pooling over token embeddings."""
     import torch
     mask_expanded = (
         attention_mask.unsqueeze(-1)
@@ -50,7 +38,6 @@ def _embed(
     model: AutoModel,
     device: str,
 ) -> np.ndarray:
-    """Produce L2-normalised sentence embeddings for a batch of strings."""
     import torch
 
     encoded = tokenizer(
@@ -68,10 +55,8 @@ def _embed(
     normalised = pooled / pooled.norm(dim=-1, keepdim=True)
     return normalised.cpu().numpy().astype("float32")
 
-# ── Milvus ─────────────────────────────────────────────────────────────────────
 
 def _connect_milvus(host: str, port: int, collection_name: str) -> Collection:
-    """Connect to Milvus and return the loaded collection."""
     connections.connect(alias="default", host=host, port=port)
     col = Collection(collection_name)
     col.load()
@@ -79,7 +64,6 @@ def _connect_milvus(host: str, port: int, collection_name: str) -> Collection:
 
 
 def _search_top1(collection: Collection, embedding: list[float]) -> Optional[int]:
-    """Run a Top-1 cosine similarity search. Returns nearest recipe_id or None."""
     try:
         results = collection.search(
             data=[embedding],
@@ -94,13 +78,8 @@ def _search_top1(collection: Collection, embedding: list[float]) -> Optional[int
         print(f"  [recipeTextModel] Milvus search error: {exc}")
     return None
 
-# ── Public interface ───────────────────────────────────────────────────────────
 
 class RecipeMilvusClient:
-    """
-    Stateful client holding MiniLM weights and the common Milvus connection.
-    Instantiated once in streaming and reused across micro-batches.
-    """
 
     def __init__(
         self,
