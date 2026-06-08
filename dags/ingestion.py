@@ -4,7 +4,6 @@ import sys
 from datetime import datetime, timedelta, timezone
 from airflow.sdk import dag, task
 
-
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from scripts.ingest import MinioClient, DeltaLakeClient
@@ -26,7 +25,7 @@ from scripts.conf import (
 
 @dag(
     dag_id="ingest_openfoodfacts_recipes_api",
-    schedule=timedelta(minutes=30),
+    schedule=None,
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "food_data", "deltalake", "minio"],
@@ -47,7 +46,7 @@ def openfoodfacts_recipes_airflow():
 
 @dag(
     dag_id="ingest_openfoodfacts_prices_api",
-    schedule=timedelta(minutes=30),
+    schedule=timedelta(minutes=60),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "food_data", "deltalake", "minio"],
@@ -68,7 +67,7 @@ def openfoodfacts_prices_airflow():
 
 @dag(
     dag_id="ingest_spoonacular_api",
-    schedule=timedelta(hours=6),
+    schedule=None,
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "food_data", "deltalake", "minio"],
@@ -88,8 +87,29 @@ def spoonacular_airflow():
     ingest_spoonacular()
 
 @dag(
+    dag_id="ingest_usda_api",
+    schedule=None,
+    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
+    catchup=False,
+    tags=["project", "food_data", "deltalake", "minio"],
+    default_args={
+        "retries": 3,
+        "retry_delay": timedelta(minutes=1),
+    }
+)
+def usda_airflow():
+
+    @task()
+    def ingest_usda():
+        m_client = MinioClient()
+        d_client = DeltaLakeClient()
+        usda.init_fetch(m_client, d_client)
+
+    ingest_usda()
+
+@dag(
     dag_id="trusted_images_airflow",
-    schedule=timedelta(hours=1),
+    schedule=None,
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "trusted_zone", "pyspark", "minio"],
@@ -116,7 +136,7 @@ def trusted_images_airflow():
 
 @dag(
     dag_id="explotation_images_airflow",
-    schedule=timedelta(hours=1),
+    schedule=None,
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "explotation_zone", "pyspark", "minio", "milvus"],
@@ -142,27 +162,6 @@ def explotation_images_airflow():
     explotation_images
 
 @dag(
-    dag_id="ingest_usda_api",
-    schedule=timedelta(hours=1),
-    start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
-    catchup=False,
-    tags=["project", "food_data", "deltalake", "minio"],
-    default_args={
-        "retries": 3,
-        "retry_delay": timedelta(minutes=1),
-    }
-)
-def usda_airflow():
-
-    @task()
-    def ingest_usda():
-        m_client = MinioClient()
-        d_client = DeltaLakeClient()
-        usda.init_fetch(m_client, d_client)
-
-    ingest_usda()
-
-@dag(
     dag_id="faostat_airflow",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
@@ -176,28 +175,24 @@ def usda_airflow():
 def faostat_airflow():
 
     @task()
-    def ingest_faostat():
+    def ingest_faostat_task():
         m_client = MinioClient()
         d_client = DeltaLakeClient()
         faostat.init_fetch(m_client, d_client)
 
     @task()
-    def trusted_faostat():
+    def trusted_faostat_task():
         m_client = MinioClient()
         d_client = DeltaLakeClient()
         faostat.init_trusted_faostat(m_client, d_client)
 
     @task()
-    def exploitation_faostat():
+    def exploitation_faostat_task():
         m_client = MinioClient()
         d_client = DeltaLakeClient()
         faostat.init_exploitation_faostat(m_client, d_client)
 
-    ingest_task = ingest_faostat()
-    trusted_task = trusted_faostat()
-    exploitation_task = exploitation_faostat()
-
-    ingest_task >> trusted_task >> exploitation_task
+    ingest_faostat_task() >> trusted_faostat_task() >> exploitation_faostat_task()
 
 @dag(
     dag_id="pipeline_images_airflow",
@@ -213,6 +208,12 @@ def faostat_airflow():
 )
 def pipeline_images_airflow():
 
+    @task(task_id="ingest_spoonacular_recipes")
+    def ingest_spoonacular_task():
+        m_client = MinioClient()
+        d_client = DeltaLakeClient()
+        spoonocular.init_fetch(m_client, d_client, RECIPE_COUNT)
+
     trusted_images = SparkSubmitOperator(
         task_id="trusted_images",
         application="/opt/airflow/scripts/spark.py",
@@ -225,16 +226,21 @@ def pipeline_images_airflow():
         jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
     )
 
-    trigger_explotation_images = TriggerDagRunOperator(
-        task_id="trigger_explotation_images",
-        trigger_dag_id="explotationZone_images",
-        wait_for_completion=True,
-        poke_interval=30,
-        reset_dag_run=True,
+    explotation_images = SparkSubmitOperator(
+        task_id="explotation_images",
+        application="/opt/airflow/scripts/sparkM.py",
+        conn_id="spark_default",
+        name="ExplotationImagePipeline",
+        application_args=[],
+        env_vars={
+            "PYTHONPATH": "/opt/airflow"
+        },
+        jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
     )
 
-    trusted_images >> trigger_explotation_images
+    spoonacular_run = ingest_spoonacular_task()
 
+    spoonacular_run >> trusted_images >> explotation_images
 
 @dag(
     dag_id="pipeline_recipes_airflow",
@@ -250,34 +256,57 @@ def pipeline_images_airflow():
 )
 def pipeline_recipes_airflow():
 
+    # 1. Definición de las Tareas de Ingesta (Python)
+    @task(task_id="ingest_openfoodfacts_recipes")
+    def ingest_off_task():
+        m_client = MinioClient()
+        d_client = DeltaLakeClient()
+        openfoodfacts.init_fetch(m_client, d_client, OFF_PAGES, OFF_PAGE_SIZE)
+
+    @task(task_id="ingest_usda")
+    def ingest_usda_task():
+        m_client = MinioClient()
+        d_client = DeltaLakeClient()
+        usda.init_fetch(m_client, d_client)
+
+    @task(task_id="ingest_spoonacular")
+    def ingest_spoonacular_task():
+        m_client = MinioClient()
+        d_client = DeltaLakeClient()
+        spoonocular.init_fetch(m_client, d_client, RECIPE_COUNT)
+
     trusted_parquet = SparkSubmitOperator(
         task_id="trusted_parquet",
         application="/opt/airflow/scripts/sparkJSON.py",
         conn_id="spark_default",
         name="TrustedRecipePipeline",
         application_args=[],
-        env_vars={
-            "PYTHONPATH": "/opt/airflow"
-        },
+        env_vars={"PYTHONPATH": "/opt/airflow"},
         jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
     )
 
-    trigger_explotation_recipes = TriggerDagRunOperator(
-        task_id="trigger_explotation_recipes",
-        trigger_dag_id="explotationZone_recipes",
-        wait_for_completion=True,
-        poke_interval=30,
-        reset_dag_run=True,
+    explotation_recipes = SparkSubmitOperator(
+        task_id="explotation_recipes",
+        application="/opt/airflow/scripts/sparkMRecipes.py",
+        conn_id="spark_default",
+        name="ExplotationMultiSourceRecipePipeline",
+        application_args=[],
+        env_vars={"PYTHONPATH": "/opt/airflow"},
+        jars="/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar"
     )
 
-    trusted_parquet >> trigger_explotation_recipes
+    off_run = ingest_off_task()
+    usda_run = ingest_usda_task()
+    spoon_run = ingest_spoonacular_task()
+
+    [off_run, usda_run, spoon_run] >> trusted_parquet >> explotation_recipes
 
 @dag(
     dag_id="streaming_airflow",
     schedule=timedelta(hours=1),
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
-    max_active_runs=1,          # Only one streaming Spark instance at a time
+    max_active_runs=1,
     tags=["project", "streaming", "milvus", "clip", "minilm", "exploitation_zone"],
     default_args={
         "retries": 1,
@@ -310,7 +339,7 @@ def streaming_airflow():
 
 @dag(
     dag_id="trusted_parquet_airflow",
-    schedule=timedelta(hours=1),
+    schedule=None,
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "trusted_zone", "pyspark", "minio", "parquet"],
@@ -337,7 +366,7 @@ def trusted_parquet_airflow():
 
 @dag(
     dag_id="explotation_recipes_airflow",
-    schedule=timedelta(hours=1),
+    schedule=None,
     start_date=datetime.now(tz=timezone.utc) - timedelta(days=1),
     catchup=False,
     tags=["project", "explotation_zone", "pyspark", "minio", "milvus"],
@@ -362,6 +391,7 @@ def explotation_recipes_airflow():
 
     explotation_recipes
 
+# Inicialización de los DAGs
 openfoodfacts_recipes_airflow()
 openfoodfacts_prices_airflow()
 spoonacular_airflow()
